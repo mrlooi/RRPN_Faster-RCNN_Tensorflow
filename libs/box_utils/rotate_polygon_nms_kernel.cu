@@ -266,6 +266,7 @@ __global__ void rotate_nms_kernel(const int n_boxes, const float nms_overlap_thr
   const int col_size =
         min(n_boxes - col_start * threadsPerBlock, threadsPerBlock);
 
+  // cache all column data in this block
   __shared__ float block_boxes[threadsPerBlock * 6];
   if (threadIdx.x < col_size) {
     block_boxes[threadIdx.x * 6 + 0] =
@@ -283,20 +284,24 @@ __global__ void rotate_nms_kernel(const int n_boxes, const float nms_overlap_thr
   }
   __syncthreads();
 
+  // iterate across each row in this block
   if (threadIdx.x < row_size) {
-    const int cur_box_idx = threadsPerBlock * row_start + threadIdx.x;
+    const int cur_box_idx = threadsPerBlock * row_start + threadIdx.x;  // current row
     const float *cur_box = dev_boxes + cur_box_idx * 6;
     int i = 0;
     unsigned long long t = 0;
     int start = 0;
     if (row_start == col_start) {
-      start = threadIdx.x + 1;
+      start = threadIdx.x + 1;  // if they are the same, skip to next (column)
     }
+
+    // for this row, calculate all ious with each column
     for (i = start; i < col_size; i++) {
       if (devRotateIoU(cur_box, block_boxes + i * 6) > nms_overlap_thresh) {
-        t |= 1ULL << i;
+        t |= 1ULL << i;  // basically storing all overlaps across the columns, hashed into one single ULL index
       }
     }
+    
     const int col_blocks = DIVUP(n_boxes, threadsPerBlock);
     dev_mask[cur_box_idx * col_blocks + col_start] = t;
   }
@@ -315,6 +320,18 @@ void _set_device(int device_id) {
 
 void _rotate_nms(int* keep_out, int* num_out, const float* boxes_host, int boxes_num,
           int boxes_dim, float nms_overlap_thresh, int device_id) {
+  /**
+  Inputs:
+  boxes_host: N,6  (xc,yc,w,h,angle,score)  ASSUMES sorted based on score, highest to lowest!
+  boxes_num: N
+  boxes_dim: 6
+  nms_overlap_thresh: 0-1 e.g. 0.7
+
+  Outputs:
+  keep_out: N  (i.e. stores indices of valid boxes_host)
+  num_out: total count of valid indices
+
+  */
   _set_device(device_id);
 
   float* boxes_dev = NULL;
@@ -329,11 +346,18 @@ void _rotate_nms(int* keep_out, int* num_out, const float* boxes_host, int boxes
                         boxes_num * boxes_dim * sizeof(float),
                         cudaMemcpyHostToDevice));
 
+
+  // Get the IoUs between each element in the array (N**2 operation)                      
+  // then store all the overlap results in the N*col_blocks array (mask_dev). 
+  // col_blocks represents the total number of column blocks (blockDim.x) made for the kernel computation
+  // Each column block will store a hash of the iou overlaps between each column and row in the block. The hash is a ULL of bit overlaps between one row and all columns in the block
+  // then copy the results to host code
+  // Each result row is a col_block array, which contains all the iou overlap bool (as a hash) per column block. 
+  // Loop through the col_block array to aggregate all iou overlap results for that row
   CUDA_CHECK(cudaMalloc(&mask_dev,
                         boxes_num * col_blocks * sizeof(unsigned long long)));
 
-  dim3 blocks(DIVUP(boxes_num, threadsPerBlock),
-              DIVUP(boxes_num, threadsPerBlock));
+  dim3 blocks(col_blocks, col_blocks); 
   dim3 threads(threadsPerBlock);
   rotate_nms_kernel<<<blocks, threads>>>(boxes_num,
                                   nms_overlap_thresh,
@@ -351,12 +375,14 @@ void _rotate_nms(int* keep_out, int* num_out, const float* boxes_host, int boxes
 
   int num_to_keep = 0;
   for (int i = 0; i < boxes_num; i++) {
-    int nblock = i / threadsPerBlock;
-    int inblock = i % threadsPerBlock;
+    int nblock = i / threadsPerBlock;  // get column block
+    int inblock = i % threadsPerBlock; 
 
-    if (!(remv[nblock] & (1ULL << inblock))) {
+    if (!(remv[nblock] & (1ULL << inblock))) {  // if not zero i.e. no overlap
       keep_out[num_to_keep++] = i;
       unsigned long long *p = &mask_host[0] + i * col_blocks;
+
+      // Loop through the col_block array to aggregate all iou overlap results for that box
       for (int j = nblock; j < col_blocks; j++) {
         remv[j] |= p[j];
       }

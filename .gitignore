@@ -101,3 +101,10 @@ ENV/
 .mypy_cache/
 
 .pyc
+
+.idea/
+output/
+data/tfrecord/
+*.ckpt
+
+tools/inference_results
