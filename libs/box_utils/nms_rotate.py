@@ -141,20 +141,23 @@ if __name__ == '__main__':
 
         return np.array(keep, dtype=np.uint64)
 
-    dets = np.array([[50, 50, 100, 100, 0, 0.99],  # xc,yc,w,h,theta (degrees),score
-                      [60, 60, 100, 100, 0, 0.88],
-                      [50, 50, 100, 90, 0., 0.66],
-                      [50, 50, 100, 100, -45., 0.65],
-                      [50, 50, 100, 80, -45., 0.55],
-                      [150, 150, 200, 30, -45., 0.5],
-                      [160, 155, 200, 30, -45., 0.46],
-                      [150, 150, 200, 30, 0., 0.45],
-                      [170, 170, 200, 30, -45., 0.44],
+    dets = np.array([
+                    #   [50, 50, 100, 100, 0, 0.99],  # xc,yc,w,h,theta (degrees),score
+                    #   [60, 60, 100, 100, 0, 0.88],
+                    #   [50, 50, 100, 90, 0., 0.66],
+                    #   [50, 50, 100, 100, -45., 0.65],
+                    #   [50, 50, 90, 50, 45., 0.6],
+                    #   [50, 50, 100, 80, -45., 0.55],
+                    #   [150, 150, 200, 30, -45., 0.5],
+                    #   [160, 155, 200, 30, -45., 0.46],
+                    #   [150, 150, 200, 30, 0., 0.45],
+                    #   [170, 170, 200, 30, -45., 0.44],
                       [170, 170, 160, 40, 45., 0.435],
-                      [170, 170, 140, 40, 45., 0.434],
+                      [170, 170, 150, 40, 45., 0.434],
                     #   [170, 170, 150, 42, 45., 0.433],
-                      [170, 170, 200, 30, 45., 0.43],
-                      [200, 200, 100, 100, 0., 0.42]], dtype=np.float32)
+                    #   [170, 170, 200, 30, 45., 0.43],
+                    #   [200, 200, 100, 100, 0., 0.42]
+            ], dtype=np.float32)
 
 
     boxes = dets[:,:-1]
@@ -169,7 +172,8 @@ if __name__ == '__main__':
 
     s_keep = standard_nms_cpu(bounding_boxes, iou_thresh)
 
-    keep = rotate_gpu_nms(dets, iou_thresh, device_id)
+    # keep = rotate_gpu_nms(dets, iou_thresh, device_id)
+    keep = nms_rotate_cpu(boxes, scores, iou_thresh, len(boxes))
 
     # import os
     # os.environ["CUDA_VISIBLE_DEVICES"] = '0'
@@ -183,11 +187,12 @@ if __name__ == '__main__':
     img = np.zeros((400,400,3), dtype=np.uint8)
     img1 = draw_anchors(img, boxes, RED)
     img2 = draw_anchors(img, out_boxes, GREEN)
-    cv2.imshow("pre rotate NMS", img1)
-    cv2.imshow("post rotate NMS", img2)
 
     img3 = draw_bounding_boxes(img1, bounding_boxes, BLUE)
     img4 = draw_anchors(img, boxes[s_keep], GREEN)
     cv2.imshow("pre NMS", img3)
     cv2.imshow("post NMS", img4)
+    cv2.imshow("pre rotate NMS", img1)
+    cv2.imshow("post rotate NMS", img2)
+
     cv2.waitKey(0)

@@ -2,6 +2,8 @@
 #include "rotate_gpu_nms.hpp"
 #include <vector>
 #include <iostream>
+#include <stdio.h>
+
 #include <cmath>
 
 #define CUDA_CHECK(condition) \
@@ -153,7 +155,7 @@ __device__ inline bool in_rect(float pt_x, float pt_y, float * pts) {
   adad = ad[0] * ad[0] + ad[1] * ad[1];
   adap = ad[0] * ap[0] + ad[1] * ap[1];
 
-  return abab >= abap and abap >= 0 and adad >= adap and adap >= 0;
+  return abab >= abap && abap >= 0 && adad >= adap && adap >= 0;
 }
 
 __device__ inline int inter_pts(float * pts1, float * pts2, float * int_pts) {
@@ -185,7 +187,6 @@ __device__ inline int inter_pts(float * pts1, float * pts2, float * int_pts) {
       }
     }
   }
-  
 
   return num_of_inter;
 }
@@ -216,9 +217,9 @@ __device__ inline void convert_region(float * pts , float const * const region) 
   pts_y[3] = h / 2;
 
   for(int i = 0;i < 4;i++) {
-    pts[7 - 2 * i - 1] = a_cos * pts_x[i] - a_sin * pts_y[i] + ctr_x;
-    pts[7 - 2 * i] = a_sin * pts_x[i] + a_cos * pts_y[i] + ctr_y;
-   
+    // round to nearest int!!
+    pts[7 - 2 * i - 1] = __float2int_rn(a_cos * pts_x[i] - a_sin * pts_y[i] + ctr_x);
+    pts[7 - 2 * i] = __float2int_rn(a_sin * pts_x[i] + a_cos * pts_y[i] + ctr_y);   
   }
 
 }
@@ -235,12 +236,11 @@ __device__ inline float inter(float const * const region1, float const * const r
   convert_region(pts2, region2);
 
   num_of_inter = inter_pts(pts1, pts2, int_pts);
+  // printf("num_of_inter: %d\n", num_of_inter);
 
   reorder_pts(int_pts, num_of_inter);
 
   return area(int_pts, num_of_inter);
-  
-  
 }
 
 __device__ inline float devRotateIoU(float const * const region1, float const * const region2) {
@@ -249,7 +249,11 @@ __device__ inline float devRotateIoU(float const * const region1, float const * 
   float area2 = region2[2] * region2[3];
   float area_inter = inter(region1, region2);
 
-  return area_inter / (area1 + area2 - area_inter);
+  float iou = area_inter / (area1 + area2 - area_inter + 1e-8); 
+
+  // printf("area1: %.3f, area2: %.3f, area_inter: %.3f, iou: %.3f\n", 
+  //     area1, area2, area_inter, iou);
+  return iou;
 
   
 }
@@ -297,7 +301,9 @@ __global__ void rotate_nms_kernel(const int n_boxes, const float nms_overlap_thr
 
     // for this row, calculate all ious with each column
     for (i = start; i < col_size; i++) {
-      if (devRotateIoU(cur_box, block_boxes + i * 6) > nms_overlap_thresh) {
+      float iou = devRotateIoU(cur_box, block_boxes + i * 6);
+      // printf("iou: %.3f\n", iou);
+      if (iou > nms_overlap_thresh) {
         t |= 1ULL << i;  // basically storing all overlaps across the columns, hashed into one single ULL index
       }
     }
