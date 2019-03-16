@@ -1,5 +1,5 @@
 
-#include "rotate_gpu_nms.hpp"
+#include "rotate_polygon_nms.hpp"
 #include <vector>
 #include <iostream>
 #include <stdio.h>
@@ -313,6 +313,7 @@ __global__ void rotate_nms_kernel(const int n_boxes, const float nms_overlap_thr
   }
 }
 
+
 void _set_device(int device_id) {
   int current_device;
   CUDA_CHECK(cudaGetDevice(&current_device));
@@ -323,6 +324,58 @@ void _set_device(int device_id) {
   // may perform initialization using the GPU.
   CUDA_CHECK(cudaSetDevice(device_id));
 }
+
+__global__ void overlaps_kernel(const int N, const int K, const float* dev_boxes,
+                           const float * dev_query_boxes, float* dev_overlaps) {
+
+  const int col_start = blockIdx.y;
+  const int row_start = blockIdx.x;
+
+  const int row_size =
+        min(N - row_start * threadsPerBlock, threadsPerBlock);
+  const int col_size =
+        min(K - col_start * threadsPerBlock, threadsPerBlock);
+
+
+  __shared__ float block_boxes[threadsPerBlock * 5];
+  __shared__ float block_query_boxes[threadsPerBlock * 5];
+  if (threadIdx.x < col_size) {
+    block_query_boxes[threadIdx.x * 5 + 0] =
+        dev_query_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 0];
+    block_query_boxes[threadIdx.x * 5 + 1] =
+        dev_query_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 1];
+    block_query_boxes[threadIdx.x * 5 + 2] =
+        dev_query_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 2];
+    block_query_boxes[threadIdx.x * 5 + 3] =
+        dev_query_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 3];
+    block_query_boxes[threadIdx.x * 5 + 4] =
+        dev_query_boxes[(threadsPerBlock * col_start + threadIdx.x) * 5 + 4];
+  }
+
+  if (threadIdx.x < row_size) {
+    block_boxes[threadIdx.x * 5 + 0] =
+        dev_boxes[(threadsPerBlock * row_start + threadIdx.x) * 5 + 0];
+    block_boxes[threadIdx.x * 5 + 1] =
+        dev_boxes[(threadsPerBlock * row_start + threadIdx.x) * 5 + 1];
+    block_boxes[threadIdx.x * 5 + 2] =
+        dev_boxes[(threadsPerBlock * row_start + threadIdx.x) * 5 + 2];
+    block_boxes[threadIdx.x * 5 + 3] =
+        dev_boxes[(threadsPerBlock * row_start + threadIdx.x) * 5 + 3];
+    block_boxes[threadIdx.x * 5 + 4] =
+        dev_boxes[(threadsPerBlock * row_start + threadIdx.x) * 5 + 4];
+  }
+
+  __syncthreads();
+
+  if (threadIdx.x < row_size) {
+
+    for(int i = 0;i < col_size; i++) {
+      int offset = row_start*threadsPerBlock * K + col_start*threadsPerBlock + threadIdx.x*K+ i ;
+      dev_overlaps[offset] = devRotateIoU(block_boxes + threadIdx.x * 5, block_query_boxes + i * 5);
+    }
+  }
+}
+
 
 void _rotate_nms(int* keep_out, int* num_out, const float* boxes_host, int boxes_num,
           int boxes_dim, float nms_overlap_thresh, int device_id) {
@@ -398,4 +451,51 @@ void _rotate_nms(int* keep_out, int* num_out, const float* boxes_host, int boxes
 
   CUDA_CHECK(cudaFree(boxes_dev));
   CUDA_CHECK(cudaFree(mask_dev));
+}
+
+void _overlaps(float* overlaps, const float* boxes, const float* query_boxes, int n, int k, int device_id) {
+
+  _set_device(device_id);
+
+  float* overlaps_dev = NULL;
+  float* boxes_dev = NULL;
+  float* query_boxes_dev = NULL;
+
+  CUDA_CHECK(cudaMalloc(&boxes_dev,
+                        n * 5 * sizeof(float)));
+
+  CUDA_CHECK(cudaMemcpy(boxes_dev,
+                        boxes,
+                        n * 5 * sizeof(float),
+                        cudaMemcpyHostToDevice));
+
+  CUDA_CHECK(cudaMalloc(&query_boxes_dev,
+                        k * 5 * sizeof(float)));
+
+  CUDA_CHECK(cudaMemcpy(query_boxes_dev,
+                        query_boxes,
+                        k * 5 * sizeof(float),
+                        cudaMemcpyHostToDevice));
+
+  CUDA_CHECK(cudaMalloc(&overlaps_dev,
+                        n * k * sizeof(float)));
+
+  dim3 blocks(DIVUP(n, threadsPerBlock),
+              DIVUP(k, threadsPerBlock));
+		
+  dim3 threads(threadsPerBlock);
+
+  overlaps_kernel<<<blocks, threads>>>(n, k,
+                                    boxes_dev,
+                                    query_boxes_dev,
+                                    overlaps_dev);  
+  
+  CUDA_CHECK(cudaMemcpy(overlaps,
+                        overlaps_dev,
+                        n * k * sizeof(float),
+                        cudaMemcpyDeviceToHost));
+
+  CUDA_CHECK(cudaFree(overlaps_dev));
+  CUDA_CHECK(cudaFree(boxes_dev));
+  CUDA_CHECK(cudaFree(query_boxes_dev));
 }

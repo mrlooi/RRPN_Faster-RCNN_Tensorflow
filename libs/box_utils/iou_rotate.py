@@ -7,9 +7,9 @@ from __future__ import print_function
 import time
 import tensorflow as tf
 from libs.box_utils.coordinate_convert import *
-from libs.box_utils.rbbox_overlaps import rbbx_overlaps
+# from libs.box_utils.rbbox_overlaps import rbbx_overlaps
 from libs.box_utils.iou_cpu import get_iou_matrix
-
+from libs.box_utils.rotate_polygon_nms import rbbx_overlaps
 
 def iou_rotate_calculate(boxes1, boxes2, use_gpu=True, gpu_id=0):
     '''
@@ -68,19 +68,29 @@ def iou_rotate_calculate1(boxes1, boxes2, use_gpu=True, gpu_id=0):
 
 
 if __name__ == '__main__':
-    import os
-    os.environ["CUDA_VISIBLE_DEVICES"] = '13'
+    # import os
+    # os.environ["CUDA_VISIBLE_DEVICES"] = '13'
     boxes1 = np.array([[50, 50, 100, 300, 0],
                        [60, 60, 100, 200, 0]], np.float32)
 
     boxes2 = np.array([[50, 50, 100, 300, -45.],
                        [200, 200, 100, 200, 0.]], np.float32)
 
+    # N = 10000
+    # N2 = 20
+    # boxes1 = np.zeros((N, 5), dtype=np.float32)
+    # boxes1[:] = [50,50,100,300,0]
+    # boxes2 = np.zeros((N2, 5), dtype=np.float32)
+    # boxes2[:] = [50,50,100,300,45]
+
     start = time.time()
-    with tf.Session() as sess:
-        ious = iou_rotate_calculate1(boxes1, boxes2, use_gpu=False)
-        print(sess.run(ious))
-        print('{}s'.format(time.time() - start))
+    ious = iou_rotate_calculate1(boxes1, boxes2, use_gpu=True)
+    print(ious)
+    print('{}s'.format(time.time() - start))
+    # with tf.Session() as sess:
+        
+        # print(sess.run(ious))
+        # print('{}s'.format(time.time() - start))
 
     # start = time.time()
     # for _ in range(10):
