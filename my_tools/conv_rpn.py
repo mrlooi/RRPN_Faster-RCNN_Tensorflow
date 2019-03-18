@@ -1,40 +1,20 @@
+import copy
+import os
+import os.path as osp
+
 import cv2
 import numpy as np
 import numpy.random as npr
-import os
-import os.path as osp
-import copy
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from anchor_generator import convert_anchor_to_rect, draw_anchors
+from utils import FT, LT
+
 BLUE = (255,0,0)
 GREEN = (0,255,0)
 RED = (0,0,255)
-
-def FT(x): return torch.FloatTensor(x)
-def LT(x): return torch.LongTensor(x)
-
-def convert_anchor_to_rect_points(anchor):
-    x_c, y_c, w, h, theta = anchor
-    rect = ((x_c, y_c), (w, h), theta)
-    rect = cv2.boxPoints(rect)
-    rect = np.int0(rect)
-    return rect
-
-def draw_anchors(img, anchors, color=(0,0,255)):
-    """
-    img: (H,W,3) np.uint8 array
-    anchors: (N,5) np.float32 array, where each row is [xc,yc,w,h,angle]
-    """
-    img_copy = img.copy()
-    for anchor in anchors:
-        rect = convert_anchor_to_rect_points(anchor)
-        # color = (np.random.randint(255), np.random.randint(255), np.random.randint(255))
-        # color = (0,0,255)
-        cv2.drawContours(img_copy, [rect], 0, color, 2)
-    return img_copy
 
 class DataLoader(object):
     def __init__(self, img_size=256, min_objects=3, max_objects=10):
@@ -66,15 +46,15 @@ class DataLoader(object):
                 h = np.random.randint(self.min_height, max_h) if max_h > self.min_height else max_h
                 theta = npr.randint(-90, 90)   # degrees
                 rect = np.array([0,0,w,h,theta], dtype=np.float32)  # center at 0,0
-                rect_pts = convert_anchor_to_rect_points(rect)  # (4,2) 4 corners (x,y)
-                rect_bb_lt = np.min(rect_pts,axis=0)  # left top point of rect's bounding box. Will be negative since rect is centered at 0
+                rect_pts = convert_anchor_to_rect(rect)  # (4,2) 4 corners (x,y)
+                rect_bb_lt = np.min(rect_pts,axis=0)  # left top point of rect's bounding box. Will be negative since rect is centered at 0,0
                 rect_bb_rb = -rect_bb_lt  # right bottom is negative of left top, since rect is symmetric and centered at 0
                 x_center, y_center = -rect_bb_lt + 1
 
                 # shift the rect (by some random amount) so that all the rect points are never out of bounds
                 x_center = np.random.randint(x_center, W - x_center)
                 y_center = np.random.randint(y_center, H - y_center)
-                rect = np.array([x_center,y_center,w,h,theta], dtype=np.float32)  # center at 0,0
+                rect = np.array([x_center,y_center,w,h,theta], dtype=np.float32)  
 
                 rect_list.append(rect)
 
@@ -126,6 +106,52 @@ class DataLoader(object):
             cv2.imshow("rects", img_rects)
             cv2.waitKey(0)
 
+class DetectionNetwork(nn.Module):
+    def __init__(self, cfg, in_channels=3):
+        super(DetectionNetwork, self).__init__()
+
+        self.cfg = cfg
+        self.in_channels = in_channels
+        self.num_anchors_per_location = len(cfg.ANCHOR_SCALES) * len(cfg.ANCHOR_RATIOS) * len(cfg.ANCHOR_ANGLES)
+        print("Total anchors: %d"%(self.num_anchors_per_location))
+        
+        self.backbone, backbone_out_channels = self.build_backbone()
+        self.rpn = self.build_rpn(backbone_out_channels, self.num_anchors_per_location)
+
+    def forward(self, x):
+        features = self.backbone(x)
+        rpn_box_pred, rpn_cls_score = self.rpn(features)
+        return features, rpn_box_pred, rpn_cls_score
+
+    # def build_full_network(self):
+    #     backbone = self.build_backbone()
+    #     return backbone
+
+    def build_rpn(self, in_channels, num_anchors):
+        from rpn import RPNHead, RPNModule
+        rpn = RPNHead(in_channels, num_anchors)
+        # rpn = RPNModule(self.cfg, in_channels)
+        return rpn
+
+    def build_backbone(self):
+        # from layers import conv_transpose2d_by_factor
+
+        backbone = nn.Sequential()
+
+        c = self.cfg.BACKBONE
+        cur_filters = self.in_channels
+        ix = 1
+        for stride, k, filters in zip(c.STRIDES, c.KERNEL_SIZES, c.FILTERS):
+            conv = nn.Conv2d(cur_filters, filters, kernel_size=k, stride=stride, padding=k//2)
+            backbone.add_module("conv_%d"%(ix), conv)
+            backbone.add_module("bn_%d"%(ix), nn.BatchNorm2d(filters))
+            backbone.add_module("relu_%d"%(ix), nn.ReLU())
+
+            cur_filters = filters
+            ix += 1
+
+        return backbone, cur_filters
+
 def train(model, dg):
     import torch.optim as optim
 
@@ -141,7 +167,11 @@ if __name__ == "__main__":
 
     data_loader = DataLoader(img_size, min_objects, max_objects)
     data = data_loader.next_batch(1)
-    # data_loader.visualize(data)
-    # img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=128)
+    data_loader.visualize(data)
+    img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=128)
     # img_t = [np.transpose(im, [1,2,0]) for im in img_tensor.numpy()]
     # data_loader.visualize([img_t, all_rects_resized])
+
+    import config as cfg
+    model = DetectionNetwork(cfg)
+    # model.cuda()
