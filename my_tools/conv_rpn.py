@@ -128,7 +128,7 @@ def train(model, data_loader):
 
     all_losses_dict = defaultdict(list)
     losses_dict = defaultdict(list)
-    for iter in range(n_iters):
+    for iter in range(1,n_iters+1):
         data = data_loader.next_batch(batch_size)
         img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=256, use_cuda=True)
 
@@ -155,6 +155,12 @@ def train(model, data_loader):
                 out_msg += "%s) %.3f, "%(k, v)
             losses_dict.clear()
             print("iter %d of %d -> %s"%(iter, n_iters, out_msg))
+
+    out_msg = ""
+    for k, vv in all_losses_dict.items():
+        v = np.mean(vv)
+        out_msg += "%s) %.3f, "%(k, v)
+    print("END: iter %d of %d -> %s"%(iter, n_iters, out_msg))
 
     # print("iter %d of %d -> Total loss: %.4f, Avg loss: %.4f"%(iter, n_iters, np.mean(losses), np.mean(all_losses)))
     # writer.close()
