@@ -5,27 +5,27 @@ import torch
 
 from utils import FT, LT
 
-class BufferList(torch.nn.Module):
-    """
-    Similar to nn.ParameterList, but for buffers
-    """
+# class BufferList(torch.nn.Module):
+#     """
+#     Similar to nn.ParameterList, but for buffers
+#     """
 
-    def __init__(self, buffers=None):
-        super(BufferList, self).__init__()
-        if buffers is not None:
-            self.extend(buffers)
+#     def __init__(self, buffers=None):
+#         super(BufferList, self).__init__()
+#         if buffers is not None:
+#             self.extend(buffers)
 
-    def extend(self, buffers):
-        offset = len(self)
-        for i, buffer in enumerate(buffers):
-            self.register_buffer(str(offset + i), buffer)
-        return self
+#     def extend(self, buffers):
+#         offset = len(self)
+#         for i, buffer in enumerate(buffers):
+#             self.register_buffer(str(offset + i), buffer)
+#         return self
 
-    def __len__(self):
-        return len(self._buffers)
+#     def __len__(self):
+#         return len(self._buffers)
 
-    def __iter__(self):
-        return iter(self._buffers.values())
+#     def __iter__(self):
+#         return iter(self._buffers.values())
 
 
 def enum_scales2(base_anchor, anchor_scales):
@@ -95,7 +95,7 @@ class AnchorGenerator(torch.nn.Module):
             
             self.anchor_sizes = [[sz,] for sz in anchor_sizes]
             
-            # raise NotImplementedError("Multiple anchor strides not implemented (Try FPN?)")
+            raise NotImplementedError("Multiple anchor strides not implemented")
 
             # cell_anchors = [
             #     generate_anchors(anchor_stride, (size,), aspect_ratios).float()
@@ -111,32 +111,41 @@ class AnchorGenerator(torch.nn.Module):
     def num_anchors_per_location(self):
         return [len(sizes) * len(self.aspect_ratios) * len(self.anchor_angles) for sizes in self.anchor_sizes]
 
-    def grid_anchors(self, grid_sizes):
+    def grid_anchors(self, grid_sizes, device):
         anchors = []
         for grid_size, stride, sizes in zip(
             grid_sizes, self.strides, self.anchor_sizes #, self.cell_anchors
         ):
-            h, w = grid_size
+            h = grid_size[0]# * stride
+            w = grid_size[1]# * stride
             anchor = generate_anchors(sizes, self.aspect_ratios, self.anchor_angles, h, w, stride)
 
-            anchors.append( FT(anchor) )
+            anchors.append( FT(anchor).to(device) )
 
         return anchors
 
-    def forward(self, image_list, feature_maps):
+    def forward(self, image_tensor, feature_map):
         # TODO
-        grid_sizes = [feature_map.shape[-2:] for feature_map in feature_maps]
-        anchors_over_all_feature_maps = self.grid_anchors(grid_sizes)
-        anchors = []
-        for i, (image_height, image_width) in enumerate(image_list.image_sizes):
-            anchors_in_image = []
-            for anchors_per_feature_map in anchors_over_all_feature_maps:
-                boxlist = BoxList(
-                    anchors_per_feature_map, (image_width, image_height), mode="xyxy"
-                )
-                self.add_visibility_to(boxlist)
-                anchors_in_image.append(boxlist)
-            anchors.append(anchors_in_image)
+        # image_list = [image_tensor]
+        feature_maps = [feature_map]
+        device = image_tensor.device
+        grid_sizes = [fm.shape[-2:] for fm in feature_maps]
+        anchors_over_all_feature_maps = self.grid_anchors(grid_sizes, device)[0]  # SINGLE ONLY
+
+        anchors = [anchors_over_all_feature_maps for im in image_tensor]  # N anchors for N images
+
+        # anchors = []
+        # # for i, (image_height, image_width) in enumerate(image_list.image_sizes):
+        # for i, image_t in enumerate(image_list):
+        #     image_height, image_width = image_t.shape[-2:]
+        #     anchors_in_image = []
+        #     for anchors_per_feature_map in anchors_over_all_feature_maps:
+        #         # boxlist = BoxList(
+        #         #     anchors_per_feature_map, (image_width, image_height), mode="xyxy"
+        #         # )
+        #         # self.add_visibility_to(boxlist)
+        #         anchors_in_image.append(boxlist)
+        #     anchors.append(anchors_in_image)
         return anchors
 
 

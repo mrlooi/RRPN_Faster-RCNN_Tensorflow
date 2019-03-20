@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from anchor_generator import convert_anchor_to_rect, draw_anchors
+from network import DetectionNetwork
 from utils import FT, LT
 
 BLUE = (255,0,0)
@@ -106,59 +107,19 @@ class DataLoader(object):
             cv2.imshow("rects", img_rects)
             cv2.waitKey(0)
 
-class DetectionNetwork(nn.Module):
-    def __init__(self, cfg, in_channels=3):
-        super(DetectionNetwork, self).__init__()
-
-        self.cfg = cfg
-        self.in_channels = in_channels
-        self.num_anchors_per_location = len(cfg.ANCHOR_SCALES) * len(cfg.ANCHOR_RATIOS) * len(cfg.ANCHOR_ANGLES)
-        print("Total anchors: %d"%(self.num_anchors_per_location))
-        
-        self.backbone, backbone_out_channels = self.build_backbone()
-        self.rpn = self.build_rpn(backbone_out_channels, self.num_anchors_per_location)
-
-    def forward(self, x):
-        features = self.backbone(x)
-        rpn_box_pred, rpn_cls_score = self.rpn(features)
-        return features, rpn_box_pred, rpn_cls_score
-
-    # def build_full_network(self):
-    #     backbone = self.build_backbone()
-    #     return backbone
-
-    def build_rpn(self, in_channels, num_anchors):
-        from rpn import RPNHead, RPNModule
-        rpn = RPNHead(in_channels, num_anchors)
-        # rpn = RPNModule(self.cfg, in_channels)
-        return rpn
-
-    def build_backbone(self):
-        # from layers import conv_transpose2d_by_factor
-
-        backbone = nn.Sequential()
-
-        c = self.cfg.BACKBONE
-        cur_filters = self.in_channels
-        ix = 1
-        for stride, k, filters in zip(c.STRIDES, c.KERNEL_SIZES, c.FILTERS):
-            conv = nn.Conv2d(cur_filters, filters, kernel_size=k, stride=stride, padding=k//2)
-            backbone.add_module("conv_%d"%(ix), conv)
-            backbone.add_module("bn_%d"%(ix), nn.BatchNorm2d(filters))
-            backbone.add_module("relu_%d"%(ix), nn.ReLU())
-
-            cur_filters = filters
-            ix += 1
-
-        return backbone, cur_filters
-
 def train(model, dg):
     import torch.optim as optim
 
     pass
 
-def test(model, dg):
-    pass
+def test(model, dg, use_cuda=False):
+    model.eval()
+    if use_cuda:
+        model.cuda()
+    data = data_loader.next_batch(2)
+
+    img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=256, use_cuda=use_cuda)
+    model.forward(img_tensor)
 
 if __name__ == "__main__":
     img_size = 256
@@ -167,11 +128,13 @@ if __name__ == "__main__":
 
     data_loader = DataLoader(img_size, min_objects, max_objects)
     data = data_loader.next_batch(1)
-    data_loader.visualize(data)
-    img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=128)
+    # data_loader.visualize(data)
+    # img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=128)
     # img_t = [np.transpose(im, [1,2,0]) for im in img_tensor.numpy()]
     # data_loader.visualize([img_t, all_rects_resized])
 
     import config as cfg
     model = DetectionNetwork(cfg)
     # model.cuda()
+    test(model, data_loader, use_cuda=True)
+
