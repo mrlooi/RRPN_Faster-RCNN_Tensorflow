@@ -11,9 +11,10 @@ assert len(BACKBONE.FILTERS) == len(BACKBONE.STRIDES) == len(BACKBONE.KERNEL_SIZ
 BACKBONE.SPATIAL_STRIDE = np.prod(BACKBONE.STRIDES)
 
 # ---------------------------------------------RPN config
+RPN_ONLY = True  #   WARN: RPN_ONLY=False Not Implemented!
 class RPN: object()
 RPN.BOX_REG_WEIGHTS = None  # None or length 5 list (weights for xc,yc,w,h,theta)
-RPN.USE_FPN = False  #   ERROR: Not Implemented!
+RPN.USE_FPN = False  #   WARN: Not Implemented!
 
 # BASE_ANCHOR_SIZE = 256  # can be modified
 # RPN.ANCHOR_SCALES = [0.125, 0.25, 0.5, 1.] 

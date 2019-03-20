@@ -6,7 +6,8 @@ from torch import nn
 from box_coder import BoxCoder
 from anchor_generator import make_anchor_generator
 from utils import permute_and_flatten
-from nms_rotate import RotateNMS
+from rotate_ops import RotateNMS, rotate_iou
+from losses import smooth_l1_loss
 
 REGRESSION_CN = 5  # 4 for bbox, 5 for rotated bbox (xc,yc,w,h,theta)
 
@@ -74,7 +75,7 @@ class RPNModule(torch.nn.Module):
         self.box_selector_train = make_rpn_postprocessor(cfg, rpn_box_coder, is_train=True)
         self.box_selector_test = make_rpn_postprocessor(cfg, rpn_box_coder, is_train=False)
 
-        # self.loss_evaluator = make_rpn_loss_evaluator(cfg, rpn_box_coder)
+        self.loss_evaluator = make_rpn_loss_evaluator(cfg, rpn_box_coder)
 
 
     def forward(self, images, features, targets=None):
@@ -87,7 +88,7 @@ class RPNModule(torch.nn.Module):
             return self._forward_test(anchors, objectness, rpn_box_regression)
 
     def _forward_train(self, anchors, objectness, rpn_box_regression, targets):
-        if self.cfg.MODEL.RPN_ONLY:
+        if self.cfg.RPN_ONLY:
             # When training an RPN-only model, the loss is determined by the
             # predicted objectness and rpn_box_regression values and there is
             # no need to transform the anchors into predicted boxes; this is an
@@ -96,6 +97,8 @@ class RPNModule(torch.nn.Module):
         else:
             # For end-to-end models, anchors must be transformed into boxes and
             # sampled into a training batch.
+            raise NotImplementedError
+
             with torch.no_grad():
                 boxes = self.box_selector_train(
                     anchors, objectness, rpn_box_regression, targets
@@ -248,3 +251,162 @@ def make_rpn_postprocessor(config, rpn_box_coder, is_train):
         # fpn_post_nms_top_n=fpn_post_nms_top_n,
     )
     return box_selector
+
+
+class RPNLossComputation(object):
+    """
+    This class computes the RPN loss.
+    """
+
+    def __init__(self, proposal_matcher, fg_bg_sampler, box_coder):
+        """
+        Arguments:
+            proposal_matcher (Matcher)
+            fg_bg_sampler (BalancedPositiveNegativeSampler)
+            box_coder (BoxCoder)
+        """
+        # self.target_preparator = target_preparator
+        self.proposal_matcher = proposal_matcher
+        self.fg_bg_sampler = fg_bg_sampler
+        self.box_coder = box_coder
+        # self.copied_fields = []
+        # self.generate_labels_func = generate_labels_func
+        # self.discard_cases = ['not_visibility', 'between_thresholds']
+        self.discard_cases = ['between_thresholds']
+
+    def match_targets_to_anchors(self, anchor, target):#, copied_fields=[]):
+        match_quality_matrix = rotate_iou(target, anchor)
+        matched_idxs = self.proposal_matcher(match_quality_matrix)
+        # RPN doesn't need any fields from target
+        # for creating the labels, so clear them all
+        # target = target.copy_with_fields(copied_fields)
+        # get the targets corresponding GT for each anchor
+
+        # NB: need to clamp the indices because we can have a single
+        # GT in the image, and matched_idxs can be -2, which goes
+        # out of bounds
+        # matched_targets = target[matched_idxs.clamp(min=0)]
+        # matched_targets.add_field("matched_idxs", matched_idxs)
+        return matched_idxs
+
+    def prepare_targets(self, anchors, targets):
+        labels = []
+        regression_targets = []
+        for anchors_per_image, targets_per_image in zip(anchors, targets):
+            matched_idxs = self.match_targets_to_anchors(
+                anchors_per_image, targets_per_image#, self.copied_fields
+            )
+
+            # NB: need to clamp the indices because we can have a single
+            # GT in the image, and matched_idxs can be -2, which goes
+            # out of bounds
+            matched_targets = targets_per_image[matched_idxs.clamp(min=0)]
+
+            # matched_idxs = matched_targets.get_field("matched_idxs")
+            labels_per_image = matched_idxs >= 0
+            labels_per_image = labels_per_image.to(dtype=torch.float32)
+
+            # Background (negative examples)
+            bg_indices = matched_idxs == self.proposal_matcher.BELOW_LOW_THRESHOLD
+            labels_per_image[bg_indices] = 0
+
+            # # discard anchors that go out of the boundaries of the image
+            # if "not_visibility" in self.discard_cases:
+            #     labels_per_image[~anchors_per_image.get_field("visibility")] = -1
+
+            # discard indices that are between thresholds
+            if "between_thresholds" in self.discard_cases:
+                inds_to_discard = matched_idxs == self.proposal_matcher.BETWEEN_THRESHOLDS
+                labels_per_image[inds_to_discard] = -1
+
+            # compute regression targets
+            regression_targets_per_image = self.box_coder.encode(
+                matched_targets, anchors_per_image
+            )
+
+            labels.append(labels_per_image)
+            regression_targets.append(regression_targets_per_image)
+
+        return labels, regression_targets
+
+
+    def __call__(self, anchors, objectness, box_regression, targets):
+        """
+        Arguments:
+            anchors (list[BoxList])
+            objectness (list[Tensor])
+            box_regression (list[Tensor])
+            targets (list[BoxList])
+
+        Returns:
+            objectness_loss (Tensor)
+            box_loss (Tensor
+        """
+        # anchors = [cat_boxlist(anchors_per_image) for anchors_per_image in anchors]
+        labels, regression_targets = self.prepare_targets(anchors, targets)
+        sampled_pos_inds, sampled_neg_inds = self.fg_bg_sampler(labels)
+        sampled_pos_inds = torch.nonzero(torch.cat(sampled_pos_inds, dim=0)).squeeze(1)
+        sampled_neg_inds = torch.nonzero(torch.cat(sampled_neg_inds, dim=0)).squeeze(1)
+
+        sampled_inds = torch.cat([sampled_pos_inds, sampled_neg_inds], dim=0)
+
+        labels = torch.cat(labels, dim=0)
+        regression_targets = torch.cat(regression_targets, dim=0)
+
+        N, A, H, W = objectness.shape
+        N, AxC, H, W = box_regression.shape
+        objectness = objectness.reshape(-1)  # same shape as labels
+        regression = box_regression.permute(0,2,3,1).reshape(-1, AxC // A)  # same shape as regression targets (N,5)
+
+        # objectness, box_regression = \
+        #         concat_box_prediction_layers(objectness, box_regression)
+        # objectness = objectness.squeeze()
+
+        total_pos = sampled_pos_inds.numel()
+        total_neg = sampled_neg_inds.numel()
+        total_samples = total_pos + total_neg
+        box_loss = smooth_l1_loss(
+            regression[sampled_pos_inds],
+            regression_targets[sampled_pos_inds],
+            beta=1.0 / 9,
+            size_average=False,
+        )
+        box_loss = box_loss / total_pos  # FOR SOME REASON sampled_inds.numel() WAS DEFAULT
+
+        objectness_weights = torch.zeros_like(labels)
+        objectness_weights[sampled_pos_inds] = float(total_pos) / total_samples
+        objectness_weights[sampled_neg_inds] = float(total_neg) / total_samples
+
+        objectness_loss = F.binary_cross_entropy_with_logits(
+            objectness[sampled_inds], labels[sampled_inds], weight=objectness_weights[sampled_inds]
+        )
+
+        return objectness_loss, box_loss
+
+# # This function should be overwritten in RetinaNet
+# def generate_rpn_labels(matched_targets):
+#     matched_idxs = matched_targets.get_field("matched_idxs")
+#     labels_per_image = matched_idxs >= 0
+#     return labels_per_image
+
+def make_rpn_loss_evaluator(cfg, box_coder):
+    from matcher import Matcher
+    from sampler import BalancedPositiveNegativeSampler
+
+    matcher = Matcher(
+        cfg.RPN.FG_IOU_THRESHOLD,
+        cfg.RPN.BG_IOU_THRESHOLD,
+        allow_low_quality_matches=True,
+    )
+
+    fg_bg_sampler = BalancedPositiveNegativeSampler(
+        cfg.RPN.BATCH_SIZE_PER_IMAGE, cfg.RPN.POSITIVE_FRACTION
+    )
+
+    loss_evaluator = RPNLossComputation(
+        matcher,
+        fg_bg_sampler,
+        box_coder
+        # generate_rpn_labels
+    )
+    return loss_evaluator

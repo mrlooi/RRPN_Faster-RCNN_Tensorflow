@@ -10,6 +10,7 @@ import math
 
 from utils import stack, clamp
 
+EPSILON = 1e-8
 
 class BoxCoder(object):
     """
@@ -44,10 +45,10 @@ class BoxCoder(object):
         reference_x_center, reference_y_center, reference_w, reference_h, reference_theta = \
             reference_boxes[:, 0], reference_boxes[:, 1], reference_boxes[:, 2], reference_boxes[:, 3], reference_boxes[:, 4]
 
-        reference_w += 1e-8
-        reference_h += 1e-8
-        w += 1e-8
-        h += 1e-8  # to avoid NaN in division and log below
+        reference_w += EPSILON
+        reference_h += EPSILON
+        w += EPSILON
+        h += EPSILON  # to avoid NaN in division and log below
         t_xcenter = (x_center - reference_x_center) / reference_w
         t_ycenter = (y_center - reference_y_center) / reference_h
         t_w = lib.log(w / reference_w)

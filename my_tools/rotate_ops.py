@@ -10,7 +10,7 @@ import cv2
 import torch
 from torch import nn
 from torch.autograd import Function
-from torch.autograd.function import once_differentiable
+# from torch.autograd.function import once_differentiable
 
 import _C
 
@@ -97,23 +97,60 @@ class RotateNMS(nn.Module):
                     self.nms_threshold, self.post_nms_top_n)
         return tmpstr
 
+def iou_rotate_cpu(boxes1, boxes2):
+    area1 = boxes1[:, 2] * boxes1[:, 3]
+    area2 = boxes2[:, 2] * boxes2[:, 3]
+    ious = []
+    for i, box1 in enumerate(boxes1):
+        temp_ious = []
+        r1 = ((box1[0], box1[1]), (box1[2], box1[3]), box1[4])
+        for j, box2 in enumerate(boxes2):
+            r2 = ((box2[0], box2[1]), (box2[2], box2[3]), box2[4])
 
-def rotate_nms_torch(dets, iou_thresh, device='cpu'):
-    nms_rot = RotateNMS(iou_thresh)
+            int_pts = cv2.rotatedRectangleIntersection(r1, r2)[1]
+            if int_pts is not None:
+                order_pts = cv2.convexHull(int_pts, returnPoints=True)
 
-    dets_tensor = torch.tensor(dets).to(device)
-    keep = nms_rot(dets_tensor)
+                int_area = cv2.contourArea(order_pts)
 
-    return keep.cpu().numpy()
+                inter = int_area * 1.0 / (area1[i] + area2[j] - int_area)
+                temp_ious.append(inter)
+            else:
+                temp_ious.append(0.0)
+        ious.append(temp_ious)
 
+    return np.array(ious, dtype=np.float32)
+
+def rotate_iou(boxes1, boxes2):
+    # N = boxes1.size(0)
+    assert len(boxes1.shape) == 2 and len(boxes2.shape) == 2 \
+           and boxes1.size(1) == 5 and boxes2.size(1) == 5
+
+    if boxes1.is_cuda:
+        iou_matrix = _C.rotate_iou_matrix(boxes1, boxes2)
+    else:
+        iou_matrix = iou_rotate_cpu(boxes1, boxes2)
+        iou_matrix = torch.FloatTensor(iou_matrix)
+    return iou_matrix
 
 if __name__ == '__main__':
+    import time
+
     RED = (0, 0, 255)
     GREEN = (0, 255, 0)
     BLUE = (255, 0, 0)
 
+    # =============================NMS ROTATE TEST===================================== #
     from anchor_generator import draw_anchors, convert_anchor_to_rect, get_bounding_box, \
         bb_intersection_over_union, draw_bounding_boxes
+
+    def rotate_nms_torch(dets, iou_thresh, device='cpu'):
+        nms_rot = RotateNMS(iou_thresh)
+
+        dets_tensor = torch.tensor(dets).to(device)
+        keep = nms_rot(dets_tensor)
+
+        return keep.cpu().numpy()
 
 
     def standard_nms_cpu(dets, iou_thresh):
@@ -206,3 +243,42 @@ if __name__ == '__main__':
     cv2.imshow("post rotate NMS", img2)
 
     cv2.waitKey(0)
+
+
+    # =============================IOU ROTATE TEST===================================== #
+
+    def iou_rotate_torch(boxes1, boxes2, use_gpu=False):
+
+        t_boxes1 = torch.FloatTensor(boxes1)
+        t_boxes2 = torch.FloatTensor(boxes2)
+        if use_gpu:
+            t_boxes1 = t_boxes1.cuda()
+            t_boxes2 = t_boxes2.cuda()
+
+        iou_matrix = rotate_iou(t_boxes1, t_boxes2)
+        iou_matrix = iou_matrix.cpu().numpy()
+
+        return iou_matrix
+
+    boxes1 = np.array([
+        [50, 50, 100, 300, 0],
+        [60, 60, 100, 200, 0],
+        [200, 200, 100, 200, 80.]
+    ], np.float32)
+
+    boxes2 = np.array([
+        [50, 50, 100, 300, -45.],
+        [50, 50, 100, 300, 0.],
+        [200, 200, 100, 200, 0.],
+        [200, 200, 100, 200, 90.]
+    ], np.float32)
+
+    start = time.time()
+    ious = iou_rotate_torch(boxes1, boxes2, use_gpu=False)
+    print(ious)
+    print('{}s'.format(time.time() - start))
+
+    start = time.time()
+    ious = iou_rotate_torch(boxes1, boxes2, use_gpu=True)
+    print(ious)
+    print('{}s'.format(time.time() - start))

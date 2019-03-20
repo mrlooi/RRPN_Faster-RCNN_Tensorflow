@@ -5,5 +5,6 @@
 at::Tensor rotate_nms_cuda(
     const at::Tensor& r_boxes, const float nms_threshold, const int max_output
 );
-
-// std::vector<at::Tensor> hough_voting_backward_cuda(const at::Tensor& grad);
+at::Tensor rotate_iou_matrix_cuda(
+    const at::Tensor& r_boxes1, const at::Tensor& r_boxes2
+);

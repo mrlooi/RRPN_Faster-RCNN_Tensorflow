@@ -24,15 +24,19 @@ at::Tensor rotate_nms(
   // return hough_voting_forward_cpu(input1, input2);
 }
 
-// std::vector<at::Tensor> hough_voting_backward(const at::Tensor& grad)
-// {
-//   if (grad.type().is_cuda()) {
-// #ifdef WITH_CUDA
-//     return hough_voting_backward_cuda(grad);
-// #else
-//     AT_ERROR("Not compiled with GPU support");
-// #endif
-//   }
-//   AT_ERROR("Not implemented on the CPU");
-//   // return hough_voting_backward_cpu(grad);
-// }
+// Interface for Python
+at::Tensor rotate_iou_matrix(
+    const at::Tensor& r_boxes1, const at::Tensor& r_boxes2
+)
+{
+  if (r_boxes1.type().is_cuda())
+  {
+#ifdef WITH_CUDA
+    return rotate_iou_matrix_cuda(r_boxes1, r_boxes2);
+#else
+    AT_ERROR("Not compiled with GPU support");
+#endif
+  }
+  AT_ERROR("Not implemented on the CPU");
+  // return hough_voting_forward_cpu(input1, input2);
+}

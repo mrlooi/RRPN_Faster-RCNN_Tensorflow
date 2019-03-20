@@ -384,33 +384,9 @@ __global__ void overlaps_kernel(const int N, const int K, const float* dev_boxes
 }
 
 
-void _overlaps_launcher(float* overlaps, const float* boxes, const float* query_boxes, int n, int k, cudaStream_t stream)
+void _iou_matrix_launcher(float* overlaps, const float* boxes, const float* query_boxes,
+        int n, int k, cudaStream_t stream)
 {
-
-//  _set_device(device_id);
-
-  float* overlaps_dev = NULL;
-  float* boxes_dev = NULL;
-  float* query_boxes_dev = NULL;
-
-  CUDA_CHECK(cudaMalloc(&boxes_dev,
-                        n * 5 * sizeof(float)));
-
-  CUDA_CHECK(cudaMemcpy(boxes_dev,
-                        boxes,
-                        n * 5 * sizeof(float),
-                        cudaMemcpyHostToDevice));
-
-  CUDA_CHECK(cudaMalloc(&query_boxes_dev,
-                        k * 5 * sizeof(float)));
-
-  CUDA_CHECK(cudaMemcpy(query_boxes_dev,
-                        query_boxes,
-                        k * 5 * sizeof(float),
-                        cudaMemcpyHostToDevice));
-
-  CUDA_CHECK(cudaMalloc(&overlaps_dev,
-                        n * k * sizeof(float)));
 
   dim3 blocks(DIVUP(n, threadsPerBlock),
               DIVUP(k, threadsPerBlock));
@@ -418,50 +394,33 @@ void _overlaps_launcher(float* overlaps, const float* boxes, const float* query_
   dim3 threads(threadsPerBlock);
 
   overlaps_kernel<<<blocks, threads, 0, stream>>>(n, k,
-                                    boxes_dev,
-                                    query_boxes_dev,
-                                    overlaps_dev);
+                                    boxes,
+                                    query_boxes,
+                                    overlaps);
+  cudaThreadSynchronize();
 
-  CUDA_CHECK(cudaMemcpy(overlaps,
-                        overlaps_dev,
-                        n * k * sizeof(float),
-                        cudaMemcpyDeviceToHost));
-
-  CUDA_CHECK(cudaFree(overlaps_dev));
-  CUDA_CHECK(cudaFree(boxes_dev));
-  CUDA_CHECK(cudaFree(query_boxes_dev));
 }
 
-void _rotate_nms_launcher(long* keep_out, int* num_out, const float* boxes_host, int boxes_num,
+void _rotate_nms_launcher(long* keep_out, int* num_out, const float* boxes, int boxes_num,
           int boxes_dim, float nms_overlap_thresh, cudaStream_t stream)
 {
   /**
   Inputs:
-  boxes_host: N,5  (xc,yc,w,h,angle)  ASSUMES already sorted
+  boxes: N,5  (xc,yc,w,h,angle)  ASSUMES already sorted
   boxes_num: N
   boxes_dim: 5
   nms_overlap_thresh: 0-1 e.g. 0.7
 
   Outputs:
-  keep_out: N  (i.e. stores indices of valid boxes_host)
+  keep_out: N  (i.e. stores indices of valid boxes)
   num_out: total count of valid indices
 
   */
 //  _set_device(device_id);
 
-  float* boxes_dev = NULL;
-  unsigned long long* mask_dev = NULL;
-
   const int col_blocks = DIVUP(boxes_num, threadsPerBlock);
 
-  CUDA_CHECK(cudaMalloc(&boxes_dev,
-                        boxes_num * boxes_dim * sizeof(float)));
-  CUDA_CHECK(cudaMemcpy(boxes_dev,
-                        boxes_host,
-                        boxes_num * boxes_dim * sizeof(float),
-                        cudaMemcpyHostToDevice));
-
-
+  unsigned long long* mask_dev = NULL;
   // Get the IoUs between each element in the array (N**2 operation)
   // then store all the overlap results in the N*col_blocks array (mask_dev).
   // col_blocks represents the total number of column blocks (blockDim.x) made for the kernel computation
@@ -477,7 +436,7 @@ void _rotate_nms_launcher(long* keep_out, int* num_out, const float* boxes_host,
 
   rotate_nms_kernel<<<blocks, threads, 0, stream>>>(boxes_num,
                                   nms_overlap_thresh,
-                                  boxes_dev,
+                                  boxes,
                                   mask_dev);
   cudaThreadSynchronize();
 
@@ -507,7 +466,6 @@ void _rotate_nms_launcher(long* keep_out, int* num_out, const float* boxes_host,
   }
   *num_out = num_to_keep;
 
-  CUDA_CHECK(cudaFree(boxes_dev));
   CUDA_CHECK(cudaFree(mask_dev));
 }
 
@@ -516,7 +474,6 @@ at::Tensor rotate_nms_cuda(
     const at::Tensor& r_boxes, const float nms_threshold, const int max_output
 )
 {
-
   int boxes_num = r_boxes.size(0);
   int channels = r_boxes.size(1);
 
@@ -538,4 +495,22 @@ at::Tensor rotate_nms_cuda(
   return keep.narrow(/*dim=*/0, /*start=*/0, /*length=*/num_to_keep).to(
       r_boxes.device(), keep.scalar_type());
 
+}
+
+at::Tensor rotate_iou_matrix_cuda(
+    const at::Tensor& r_boxes1, const at::Tensor& r_boxes2
+)
+{
+  int N = r_boxes1.size(0);
+  int M = r_boxes2.size(0);
+
+  at::Tensor iou_matrix = at::zeros({N, M}, r_boxes1.options());
+
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  _iou_matrix_launcher(iou_matrix.contiguous().data<float>(), r_boxes1.contiguous().data<float>(),
+        r_boxes2.contiguous().data<float>(), N, M, stream);
+
+  THCudaCheck(cudaGetLastError());
+
+  return iou_matrix;
 }

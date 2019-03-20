@@ -15,10 +15,18 @@ class DetectionNetwork(nn.Module):
         self.backbone, backbone_out_channels = self.build_backbone()
         self.rpn = self.build_rpn(backbone_out_channels)#, self.num_anchors_per_location)
 
-    def forward(self, x):
+    def forward(self, x, targets=None):
         features = self.backbone(x)
-        rpn_box_pred, rpn_cls_score = self.rpn(x, features)
-        return features, rpn_box_pred, rpn_cls_score
+
+        rpn_box_pred, rpn_losses = self.rpn(x, features, targets)
+
+        if not self.cfg.RPN_ONLY:
+            raise NotImplementedError
+
+        losses = {}
+        losses.update(rpn_losses)
+
+        return rpn_box_pred, losses
 
     # def build_full_network(self):
     #     backbone = self.build_backbone()
