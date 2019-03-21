@@ -18,10 +18,10 @@ RPN.USE_FPN = False  #   WARN: Not Implemented!
 
 # BASE_ANCHOR_SIZE = 256  # can be modified
 # RPN.ANCHOR_SCALES = [0.125, 0.25, 0.5, 1.] 
-RPN.ANCHOR_SIZES = [32,64,128,256]  # np.array(RPN.ANCHOR_SCALES) * BASE_ANCHOR_SIZE
+RPN.ANCHOR_SIZES = [32,64,100]  # np.array(RPN.ANCHOR_SCALES) * BASE_ANCHOR_SIZE
 
 RPN.ANCHOR_STRIDE = [BACKBONE.SPATIAL_STRIDE] # [16]  # can not be modified in most situations, unless using e.g. FPN
-RPN.ASPECT_RATIOS = [1., 1. / 2, 2., 1 / 4., 4.]#, 6., 1 / 6.]
+RPN.ASPECT_RATIOS = [1., 1. / 2, 2., 1 / 5., 5.]#, 6., 1 / 6.]
 RPN.ANCHOR_ANGLES = [-90, -75, -60, -45, -30, -15]
 
 RPN.FG_IOU_THRESHOLD = 0.7
