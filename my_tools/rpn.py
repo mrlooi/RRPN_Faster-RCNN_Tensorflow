@@ -355,7 +355,7 @@ class RPNLossComputation(object):
 
         N, A, H, W = objectness.shape
         N, AxC, H, W = box_regression.shape
-        objectness = objectness.reshape(-1)  # same shape as labels
+        objectness = objectness.permute(0,2,3,1).reshape(-1)  # same shape as labels
         regression = box_regression.permute(0,2,3,1).reshape(-1, AxC // A)  # same shape as regression targets (N,5)
 
         # objectness, box_regression = \
@@ -371,14 +371,14 @@ class RPNLossComputation(object):
             beta=1.0 / 9,
             size_average=False,
         )
-        box_loss = box_loss / total_pos  # FOR SOME REASON sampled_inds.numel() WAS DEFAULT
+        box_loss = box_loss / total_samples # FOR SOME REASON sampled_inds.numel() WAS DEFAULT
 
-        objectness_weights = torch.zeros_like(labels)
-        objectness_weights[sampled_pos_inds] = float(total_pos) / total_samples
-        objectness_weights[sampled_neg_inds] = float(total_neg) / total_samples
+        # objectness_weights = torch.ones_like(labels)
+        # objectness_weights[sampled_pos_inds] = float(total_pos) / total_samples
+        # objectness_weights[sampled_neg_inds] = float(total_neg) / total_samples
 
         objectness_loss = F.binary_cross_entropy_with_logits(
-            objectness[sampled_inds], labels[sampled_inds], weight=objectness_weights[sampled_inds]
+            objectness[sampled_inds], labels[sampled_inds]#, weight=objectness_weights[sampled_inds]
         )
 
         return objectness_loss, box_loss

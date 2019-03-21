@@ -7,6 +7,8 @@ from anchor_generator import convert_anchor_to_rect, \
     draw_anchors, make_anchor_generator, generate_anchors
 
 def FT(x): return torch.FloatTensor(x)
+def FCT(x): return FT(x).cuda()
+
 
 class DataLoader(object):
     def __init__(self, img_size=256, min_objects=3, max_objects=10, fill=False):
@@ -15,9 +17,9 @@ class DataLoader(object):
         self.max_objects = max_objects
         self.fill = fill
 
-        self.min_height = int(self.img_size / 16)
+        self.min_height = int(self.img_size / 7)
         self.max_height = int(self.img_size / 3)
-        self.min_width = int(self.img_size / 16)
+        self.min_width = int(self.img_size / 7)
         self.max_width = int(self.img_size / 3)
         self.max_area = int(self.img_size * self.img_size / 5)
 
@@ -103,6 +105,8 @@ class DataLoader(object):
 
 
 if __name__ == '__main__':
+    from rotate_ops import rotate_iou, nms_rotate_cpu, iou_rotate_cpu
+
     img_size = 256
     min_objects=3
     max_objects=5
@@ -115,7 +119,8 @@ if __name__ == '__main__':
     # img_t = [np.transpose(im, [1,2,0]) for im in img_tensor.numpy()]
     # data_loader.visualize([img_t, all_rects_resized])
 
-    def visualize_config_anchors(image, cfg):
+    def visualize_config_anchors(image, gt_anchors, cfg):
+
         # anchor_generator = make_anchor_generator(cfg)
         anchor_sizes = cfg.RPN.ANCHOR_SIZES
         anchor_ratios = cfg.RPN.ASPECT_RATIOS
@@ -128,19 +133,54 @@ if __name__ == '__main__':
                             height=H // stride,
                             width=W // stride,
                             stride=stride)
-                            
+
+        iou_matrix = rotate_iou(FCT(gt_anchors), FCT(anchors)).cpu().numpy()
+        sorted_matrix = np.argsort(iou_matrix, axis=1)[:, ::-1]
+
+        fg_iou_thresh = 0.65 # cfg.RPN.FG_IOU_THRESHOLD
+        nms_thresh = cfg.RPN.NMS_THRESH
+
+        a,b = np.nonzero(iou_matrix > fg_iou_thresh)
+        # gg = iou_matrix > fg_iou_thresh
+        # b = np.unique([ix for g in gg for ix,b in enumerate(g) if b!=0])
+        # best_anchors = anchors[sorted_matrix[:,0]]
+        best_anchors = anchors[b]#[(iou_matrix > 0.8]
+        best_anchors = best_anchors[nms_rotate_cpu(best_anchors, nms_thresh, 1000)]
+
+        img_best_anchors = draw_anchors(image, best_anchors)
+        cv2.imshow("img", img)
+        cv2.imshow("best_anchors", img_best_anchors)
+
         batch = total_anchors
-        start = 0
+        start = 0 # (len(anchors) // total_anchors // 2)
         for ix in np.arange(start, len(anchors), batch):
-            img1 = draw_anchors(image, anchors[ix:ix+batch])
-            cv2.imshow("anchors", img1)
-            cv2.waitKey(0)
+            stride_anchors = anchors[ix:ix+batch]
+            img_stride_anchors = draw_anchors(image, stride_anchors)
+            valid_idx = b[np.logical_and(ix <= b, b < ix + batch)]
+
+            # print("Valids: %d"%(len(valid_idx)))
+            if len(valid_idx) == 0:
+                continue
+
+            valid_anchors = anchors[valid_idx]
+            img_valid_stride_anchors = draw_anchors(image, valid_anchors)
+
+            post_nms_anchors = valid_anchors[nms_rotate_cpu(valid_anchors, nms_thresh, 100)]
+            img_valid_stride_anchors_post_nms = draw_anchors(image, post_nms_anchors)
+            # post_nms_iou_matrix = iou_rotate_cpu(gt_anchors, post_nms_anchors)
+            # print(post_nms_iou_matrix)
+
+            cv2.imshow("stride_anchors", img_stride_anchors)
+            cv2.imshow("valid_stride_anchors (>%.2f)"%(fg_iou_thresh), img_valid_stride_anchors)
+            cv2.imshow("valid_stride_anchors (post NMS)", img_valid_stride_anchors_post_nms)
+            cv2.waitKey(100)
 
         # img_anchors = draw_anchors(image, anchors)
         # cv2.imshow("anchors", img_anchors)
         # cv2.waitKey(0)
 
     import config as cfg
-    sample_images = data[0]
-    sample_img = sample_images[0]
-    visualize_config_anchors(sample_img, cfg)
+    data = data_loader.next_batch(30)
+    images, gt_anchors = data
+    for ix, img in enumerate(images):
+        visualize_config_anchors(images[ix], gt_anchors[ix], cfg)
