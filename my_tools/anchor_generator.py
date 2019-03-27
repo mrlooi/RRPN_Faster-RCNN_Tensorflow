@@ -202,6 +202,12 @@ def generate_anchors(anchor_sizes, anchor_ratios, anchor_angles,
     box_parameters = np.reshape(box_parameters, [-1, 3])
     anchors = np.concatenate([anchor_centers, box_parameters], axis=1)
 
+    h_gt_w = anchors[:, 3] >= anchors[:, 2]
+    anchors[h_gt_w,2:4] = anchors[h_gt_w,2:4][:,:-1]  # always make width bigger than height
+    anchors[h_gt_w,-1] -= 90
+    anchors[anchors[:, -1] < -90, -1] += 180
+    anchors[anchors[:, -1] > 90, -1] -= 180
+
     return anchors
 
 
@@ -228,7 +234,22 @@ def bb_intersection_over_union(boxA, boxB):
 	# return the intersection over union value
 	return iou
 
-def convert_anchor_to_rect(anchor):
+def convert_pts_to_rect(pts):
+    box = np.int0(pts)
+    box = box.reshape([4, 2])
+    rect1 = cv2.minAreaRect(box)
+
+    x, y, w, h, theta = rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], rect1[2]
+    if h >= w:
+        h, w = w, h
+        theta = theta - 90
+    if theta < -90.0:
+        theta = theta + 180
+    elif theta > 90.0:
+        theta = theta - 180
+    return (x, y, w, h, theta)
+
+def convert_rect_to_pts(anchor):
     x_c, y_c, w, h, theta = anchor
     rect = ((x_c, y_c), (w, h), theta)
     rect = cv2.boxPoints(rect)
@@ -265,7 +286,7 @@ def draw_anchors(img, anchors, color_list=[], fill=False):
 
     for ix,anchor in enumerate(anchors):
         color = color_list[ix]
-        rect = convert_anchor_to_rect(anchor)
+        rect = convert_rect_to_pts(anchor)
         if fill:
             cv2.fillConvexPoly(img_copy, rect, color)
         else:
@@ -295,24 +316,24 @@ if __name__ == '__main__':
         grid_sizes = np.array([[800//s,800//s] for s in cfg.RPN.ANCHOR_STRIDE], dtype=np.int32)  # feature map sizes
         anchor_generator.grid_anchors(grid_sizes)
 
-    test_make_anchor_generator()
+    # test_make_anchor_generator()
 
     def anchors_unit_test():
-        base_anchor_size = 256
-        anchor_scales = [1./8, 1./6, 1./4]  # strides 16,8,4
-        anchor_sizes = np.array(anchor_scales) * base_anchor_size
+        # base_anchor_size = 256
+        # anchor_scales = [1./8, 1./6, 1./4]  # strides 16,8,4
+        anchor_sizes = [32,64,96] # np.array(anchor_scales) * base_anchor_size
         anchor_ratios = [0.5, 1.0, 2.0]
-        anchor_angles = [-90, -45]#, -60, -45, -30, -15]
+        anchor_angles = [-90,-45]#, -60, -45, -30, -15]
         # base_anchor = tf.constant([0, 0, base_anchor_size, base_anchor_size], tf.float32)
-        base_anchor = np.array([0, 0, base_anchor_size, base_anchor_size], np.float32)
 
-        anchors = enum_scales2(base_anchor, anchor_scales)
-        tmp1 = enum_ratios_and_thetas2(anchors, anchor_ratios, anchor_angles[:1])
-        total_anchors = len(anchor_angles) * len(anchor_ratios) * len(anchor_scales)
+        # base_anchor = np.array([0, 0, base_anchor_size, base_anchor_size], np.float32)
+        # anchors = enum_scales2(base_anchor, anchor_scales)
+        # tmp1 = enum_ratios_and_thetas2(anchors, anchor_ratios, anchor_angles[:1])
+        total_anchors = len(anchor_angles) * len(anchor_ratios) * len(anchor_sizes)
 
         stride = 16
-        W = 800
-        H = 800
+        W = 16
+        H = 16
         anchors = generate_anchors(anchor_sizes, anchor_ratios, anchor_angles,
                             height=H // stride,
                             width=W // stride,
@@ -330,3 +351,5 @@ if __name__ == '__main__':
             img1 = draw_anchors(img, anchors[ix:ix+batch])
             cv2.imshow("anchors", img1)
             cv2.waitKey(0)
+
+    anchors_unit_test()

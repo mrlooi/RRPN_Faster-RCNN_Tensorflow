@@ -3,6 +3,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+import numpy as np
+
 from box_coder import BoxCoder
 from anchor_generator import make_anchor_generator
 from utils import permute_and_flatten
@@ -103,12 +105,13 @@ class RPNModule(torch.nn.Module):
                 boxes = self.box_selector_train(
                     anchors, objectness, rpn_box_regression, targets
                 )
-        loss_objectness, loss_rpn_box_reg = self.loss_evaluator(
+        loss_objectness, loss_rpn_box_reg, loss_rpn_box_angle = self.loss_evaluator(
             anchors, objectness, rpn_box_regression, targets
         )
         losses = {
             "loss_objectness": loss_objectness,
             "loss_rpn_box_reg": loss_rpn_box_reg,
+            "loss_rpn_box_angle": loss_rpn_box_angle
         }
         return boxes, losses
 
@@ -292,6 +295,7 @@ class RPNLossComputation(object):
     def prepare_targets(self, anchors, targets):
         labels = []
         regression_targets = []
+        matched_target_idxs = []
         for anchors_per_image, targets_per_image in zip(anchors, targets):
             matched_idxs = self.match_targets_to_anchors(
                 anchors_per_image, targets_per_image#, self.copied_fields
@@ -326,8 +330,9 @@ class RPNLossComputation(object):
 
             labels.append(labels_per_image)
             regression_targets.append(regression_targets_per_image)
+            matched_target_idxs.append(matched_idxs.clamp(min=0))
 
-        return labels, regression_targets
+        return labels, regression_targets, matched_target_idxs
 
 
     def __call__(self, anchors, objectness, box_regression, targets):
@@ -343,7 +348,9 @@ class RPNLossComputation(object):
             box_loss (Tensor
         """
         # anchors = [cat_boxlist(anchors_per_image) for anchors_per_image in anchors]
-        labels, regression_targets = self.prepare_targets(anchors, targets)
+        # aaa = [t[:,2] - t[:,3] for t in targets]
+        # bbb = torch.sum(torch.cat([a[:, 2] < a[:, 3] for a in anchors]))
+        labels, regression_targets, matched_target_idxs = self.prepare_targets(anchors, targets)
         sampled_pos_inds, sampled_neg_inds = self.fg_bg_sampler(labels)
         sampled_pos_inds = torch.nonzero(torch.cat(sampled_pos_inds, dim=0)).squeeze(1)
         sampled_neg_inds = torch.nonzero(torch.cat(sampled_neg_inds, dim=0)).squeeze(1)
@@ -365,23 +372,52 @@ class RPNLossComputation(object):
         total_pos = sampled_pos_inds.numel()
         total_neg = sampled_neg_inds.numel()
         total_samples = total_pos + total_neg
+
+        pos_regression = regression[sampled_pos_inds]  # (N, 5) -> xc,yc,w,h,theta
+        pos_regression_targets = regression_targets[sampled_pos_inds]  # (N, 5) -> xc,yc,w,h,theta
+        pos_angles = pos_regression[:, -1].clone()
+        pos_angles_targets = pos_regression_targets[:, -1].clone()
         box_loss = smooth_l1_loss(
-            regression[sampled_pos_inds],
-            regression_targets[sampled_pos_inds],
+            pos_regression[:,:-1].clone() - pos_regression_targets[:,:-1].clone(),
             beta=1.0 / 9,
             size_average=False,
         )
-        box_loss = box_loss / total_samples # FOR SOME REASON sampled_inds.numel() WAS DEFAULT
+        #
+        # # # for targets where the height and width are roughly similar, there may be ambiguity in angle regression
+        # # # e.g. if height and width are equal, angle regression could be -90 or 0 degrees
+        # # # we don't want to penalize this
+        # #
+        # THRESH = 0.12
+        # all_matched_targets = torch.cat([t[mt_idxs] for t, mt_idxs in zip(targets, matched_target_idxs)], dim=0)[sampled_pos_inds]
+        # target_w_to_h_ratio = torch.div(all_matched_targets[:, 2], all_matched_targets[:, 3])
+        # target_w_to_h_ratio_diff = torch.abs(1.0 - target_w_to_h_ratio)
+        # y = target_w_to_h_ratio_diff > THRESH
+        # n = target_w_to_h_ratio_diff <= THRESH
+        # angle_loss_y = torch.abs(torch.sin(pos_angles[y] - pos_angles_targets[y])).mean()
+        # an = pos_angles_targets[n]
+        #
+        # # cond = n < beta
+        # # loss = torch.where(pos_angles_targets[y], 0.5 * n ** 2 / beta, n - 0.5 * beta)
+        # angle_loss_n = smooth_l1_loss(torch.sin(pos_angles[n] - pos_angles_targets[n])).mean()
+
+        # angle_loss = (torch.sum(y) * angle_loss_y + torch.sum(n) * angle_loss_n) / total_pos
+        angle_loss = torch.abs(torch.sin(pos_angles - pos_angles_targets)).mean()
+        # angle_loss = smooth_l1_loss(torch.sin(pos_angles - pos_angles_targets))
+
+        box_loss = box_loss / total_pos  # FOR SOME REASON sampled_inds.numel() WAS DEFAULT
 
         # objectness_weights = torch.ones_like(labels)
         # objectness_weights[sampled_pos_inds] = float(total_pos) / total_samples
         # objectness_weights[sampled_neg_inds] = float(total_neg) / total_samples
 
+        # criterion = nn.BCELoss(reduce=False)
+        # entropy_loss = criterion(objectness[sampled_inds].sigmoid(), labels[sampled_inds])
+        # objectness_loss = torch.mul(entropy_loss, objectness_weights[sampled_inds]).mean()
         objectness_loss = F.binary_cross_entropy_with_logits(
             objectness[sampled_inds], labels[sampled_inds]#, weight=objectness_weights[sampled_inds]
         )
 
-        return objectness_loss, box_loss
+        return objectness_loss, box_loss, angle_loss
 
 # # This function should be overwritten in RetinaNet
 # def generate_rpn_labels(matched_targets):

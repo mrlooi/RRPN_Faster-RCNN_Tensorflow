@@ -3,6 +3,12 @@ import torch.nn as nn
 
 from rpn import RPNHead, RPNModule
 
+
+def init_conv_weights(m):
+    if type(m) == nn.Conv2d:
+        torch.nn.init.xavier_uniform_(m.weight)
+        m.bias.data.fill_(0.01)
+
 class DetectionNetwork(nn.Module):
     def __init__(self, cfg, in_channels=3):
         super(DetectionNetwork, self).__init__()
@@ -13,6 +19,7 @@ class DetectionNetwork(nn.Module):
         # print("Total anchors: %d"%(self.num_anchors_per_location))
         
         self.backbone, backbone_out_channels = self.build_backbone()
+        self.backbone.apply(init_conv_weights)
         self.rpn = self.build_rpn(backbone_out_channels)#, self.num_anchors_per_location)
 
     def forward(self, x, targets=None):

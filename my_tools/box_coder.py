@@ -53,7 +53,29 @@ class BoxCoder(object):
         t_ycenter = (y_center - reference_y_center) / reference_h
         t_w = lib.log(w / reference_w)
         t_h = lib.log(h / reference_h)
-        t_theta = (theta - reference_theta) * math.pi / 180
+
+        """
+        TO PREVENT angle AMBIGUITY
+        for targets where the height and width are roughly similar, there may be ambiguity in angle regression
+        e.g. if height and width are equal, angle regression could be -90 or 0 degrees
+        we don't want to penalize this
+        #
+        """
+        # THRESH = 0.15
+        # w_to_h_ratio = w / h
+        # w_to_h_ratio_diff = self.lib.abs(1.0 - w_to_h_ratio)
+        # adj_theta = theta.clone() if self.lib == torch else theta.copy()
+        # square_ids = w_to_h_ratio_diff < THRESH
+        # adj_squares_theta = adj_theta[square_ids]
+        # adj_squares_theta[adj_squares_theta > 90] -= 90
+        # adj_squares_theta[adj_squares_theta > 45] -= 90
+        # adj_theta[square_ids] = adj_squares_theta
+
+        t_theta = theta - reference_theta
+        # t_theta[t_theta > 90] -= 90
+        # t_theta[t_theta > 45] -= 90
+
+        t_theta = t_theta * np.pi / 180  # convert to radians
 
         if weights is not None:
             wx, wy, ww, wh, wa = weights

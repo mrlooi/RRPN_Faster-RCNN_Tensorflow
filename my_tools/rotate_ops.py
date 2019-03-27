@@ -141,7 +141,7 @@ if __name__ == '__main__':
     BLUE = (255, 0, 0)
 
     # =============================NMS ROTATE TEST===================================== #
-    from anchor_generator import draw_anchors, convert_anchor_to_rect, get_bounding_box, \
+    from anchor_generator import draw_anchors, convert_rect_to_pts, get_bounding_box, \
         bb_intersection_over_union, draw_bounding_boxes
 
     def rotate_nms_torch(dets, iou_thresh, device='cpu'):
@@ -202,10 +202,16 @@ if __name__ == '__main__':
           [170, 170, 200, 30, 45., 0.43],
           [200, 200, 100, 100, 0., 0.42]
     ], dtype=np.float32)
+    dets = np.array([
+        [60, 60, 100, 50, -90, 0.9],
+        [60, 60, 100, 50, -180, 0.8],
+    ], dtype=np.float32)
+    dets[dets[:, -2] < -45, -2] += 180
+    dets[dets[:, -2] > 135, -2] -= 180
 
     boxes = dets[:, :-1]
     scores = dets[:, -1]
-    rects = np.array([convert_anchor_to_rect(b) for b in boxes])
+    rects = np.array([convert_rect_to_pts(b) for b in boxes])
     bounding_boxes = np.array([get_bounding_box(r) for r in rects])
 
     # dets = np.hstack((boxes, scores))
@@ -214,11 +220,11 @@ if __name__ == '__main__':
     device_id = 0
 
     device = 'cuda'
-    keep2 = rotate_nms_torch(boxes, iou_thresh, device=device)
-    keep = nms_rotate_cpu(boxes, iou_thresh, len(boxes))
-    print("CPU keep: ", keep)
-    print("GPU keep: ", keep2)
-    keep = keep2
+    keep = rotate_nms_torch(boxes, iou_thresh, device=device)
+    keep2 = nms_rotate_cpu(boxes, iou_thresh, len(boxes))
+    print("CPU keep: ", keep2)
+    print("GPU keep: ", keep)
+    # keep = keep2
 
     s_keep = standard_nms_cpu(bounding_boxes, iou_thresh)
 
@@ -245,40 +251,40 @@ if __name__ == '__main__':
     cv2.waitKey(0)
 
 
-    # =============================IOU ROTATE TEST===================================== #
-
-    def iou_rotate_torch(boxes1, boxes2, use_gpu=False):
-
-        t_boxes1 = torch.FloatTensor(boxes1)
-        t_boxes2 = torch.FloatTensor(boxes2)
-        if use_gpu:
-            t_boxes1 = t_boxes1.cuda()
-            t_boxes2 = t_boxes2.cuda()
-
-        iou_matrix = rotate_iou(t_boxes1, t_boxes2)
-        iou_matrix = iou_matrix.cpu().numpy()
-
-        return iou_matrix
-
-    boxes1 = np.array([
-        [50, 50, 100, 300, 0],
-        [60, 60, 100, 200, 0],
-        [200, 200, 100, 200, 80.]
-    ], np.float32)
-
-    boxes2 = np.array([
-        [50, 50, 100, 300, -45.],
-        [50, 50, 100, 300, 0.],
-        [200, 200, 100, 200, 0.],
-        [200, 200, 100, 200, 90.]
-    ], np.float32)
-
-    start = time.time()
-    ious = iou_rotate_torch(boxes1, boxes2, use_gpu=False)
-    print(ious)
-    print('{}s'.format(time.time() - start))
-
-    start = time.time()
-    ious = iou_rotate_torch(boxes1, boxes2, use_gpu=True)
-    print(ious)
-    print('{}s'.format(time.time() - start))
+    # # =============================IOU ROTATE TEST===================================== #
+    #
+    # def iou_rotate_torch(boxes1, boxes2, use_gpu=False):
+    #
+    #     t_boxes1 = torch.FloatTensor(boxes1)
+    #     t_boxes2 = torch.FloatTensor(boxes2)
+    #     if use_gpu:
+    #         t_boxes1 = t_boxes1.cuda()
+    #         t_boxes2 = t_boxes2.cuda()
+    #
+    #     iou_matrix = rotate_iou(t_boxes1, t_boxes2)
+    #     iou_matrix = iou_matrix.cpu().numpy()
+    #
+    #     return iou_matrix
+    #
+    # boxes1 = np.array([
+    #     [50, 50, 100, 300, 0],
+    #     [60, 60, 100, 200, 0],
+    #     [200, 200, 100, 200, 80.]
+    # ], np.float32)
+    #
+    # boxes2 = np.array([
+    #     [50, 50, 100, 300, -45.],
+    #     [50, 50, 100, 300, 0.],
+    #     [200, 200, 100, 200, 0.],
+    #     [200, 200, 100, 200, 90.]
+    # ], np.float32)
+    #
+    # start = time.time()
+    # ious = iou_rotate_torch(boxes1, boxes2, use_gpu=False)
+    # print(ious)
+    # print('{}s'.format(time.time() - start))
+    #
+    # start = time.time()
+    # ious = iou_rotate_torch(boxes1, boxes2, use_gpu=True)
+    # print(ious)
+    # print('{}s'.format(time.time() - start))
