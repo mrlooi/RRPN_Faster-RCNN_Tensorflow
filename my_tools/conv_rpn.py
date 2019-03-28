@@ -139,11 +139,11 @@ if __name__ == "__main__":
     model = DetectionNetwork(cfg)
 
     save_path = "model_rpn_0.pth"
-    # model.load_state_dict(torch.load(save_path))
-    # print("Loaded %s"%(save_path))
+    model.load_state_dict(torch.load(save_path))
+    print("Loaded %s"%(save_path))
 
-    train(model, data_loader)
-    torch.save(model.state_dict(), save_path)
+    # train(model, data_loader)
+    # torch.save(model.state_dict(), save_path)
 
-    test(model, data_loader, batch_sz=20, use_cuda=True)
+    test(model, data_loader, batch_sz=32, use_cuda=True)
 

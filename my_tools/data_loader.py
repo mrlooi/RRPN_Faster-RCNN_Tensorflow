@@ -49,10 +49,10 @@ class DataLoader(object):
             color_list = []
             for n in range(num_objects):
                 w = npr.randint(self.min_width, self.max_width)
-                h = w // (np.random.randint(15,30) / 10.)
-                # max_h = min(self.max_area // w, self.max_height)
-                # h = npr.randint(self.min_height, max_h) if max_h > self.min_height else max_h
-                # h = max(self.min_area // w, h)
+                # h = w // (np.random.randint(15,30) / 10.)
+                max_h = min(self.max_area // w, self.max_height)
+                h = npr.randint(self.min_height, max_h) if max_h > self.min_height else max_h
+                h = max(self.min_area // w, h)
                 theta = npr.randint(-90, 90)
                 # theta = np.random.permutation([-30,0,30])[0] #npr.randint(-90, 90)   # degrees
                 rect = np.array([0, 0, w, h, theta], dtype=np.float32)  # center at 0,0

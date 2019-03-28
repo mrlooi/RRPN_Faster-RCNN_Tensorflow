@@ -36,6 +36,9 @@ def aa():
         print(convert_pts_to_rect(pts))
 
 
+RED = [0,0,255]
+BLUE = [255,0,0]
+GREEN = [0,255,0]
 
 if __name__ == '__main__':
     import config as cfg
@@ -47,7 +50,7 @@ if __name__ == '__main__':
 
     # anchor_generator = make_anchor_generator(cfg)
     anchor_sizes = cfg.RPN.ANCHOR_SIZES
-    anchor_ratios = [1.3, 2.] # cfg.RPN.ASPECT_RATIOS
+    anchor_ratios = [1., 2.] # cfg.RPN.ASPECT_RATIOS
     stride = cfg.RPN.ANCHOR_STRIDE[0]
     anchor_angles = cfg.RPN.ANCHOR_ANGLES
 
@@ -83,14 +86,18 @@ if __name__ == '__main__':
         print(iou)
         # if np.abs(angle_diff) >= 90:
         #     angle_diff = 0
-        out = draw_anchors(img, [gt, a])
+        out = draw_anchors(img, [gt, a], [RED, BLUE])
 
         gt_mid_pt = tuple(gt[:2])
-        out = cv2.putText(out, "%d"%(angle_diff), gt_mid_pt, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
+
+        txt_color = RED
+        if np.abs(angle_diff) >= 45:
+            txt_color = BLUE
+        out = cv2.putText(out, "%d"%(angle_diff), gt_mid_pt, cv2.FONT_HERSHEY_SIMPLEX, 0.5, txt_color)
 
         a2 = a.copy()
         a2[2:4] = gt[2:4]
         a2[-1] += angle_diff
-        cv2.imshow("adjusted", draw_anchors(img, [a2]))
+        cv2.imshow("adjusted", draw_anchors(img, [a2], [BLUE]))
         cv2.imshow("out", out)
         cv2.waitKey(0)

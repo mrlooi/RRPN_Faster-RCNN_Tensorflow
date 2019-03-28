@@ -23,7 +23,7 @@ RPN.ANCHOR_SIZES = [32,60,86]  # np.array(RPN.ANCHOR_SCALES) * BASE_ANCHOR_SIZE
 RPN.ANCHOR_STRIDE = [8] # [16]  # can not be modified in most situations, unless using e.g. FPN
 # RPN.ASPECT_RATIOS = [0.5, 1., 2.] # [1., 1. / 2, 2., 1. / 4, 4.]#, 1 / 3., 3.]#, 6., 1 / 6.]
 # RPN.ANCHOR_ANGLES = [-90,-72,-54,-36,-18] #[-45, -15, 15] #[-90, -75, -60, -45, -30, -15]
-RPN.ASPECT_RATIOS = [2.] # [1., 1. / 2, 2., 1. / 4, 4.]#, 1 / 3., 3.]#, 6., 1 / 6.]
+RPN.ASPECT_RATIOS = [1.,2.] # [1., 1. / 2, 2., 1. / 4, 4.]#, 1 / 3., 3.]#, 6., 1 / 6.]
 RPN.ANCHOR_ANGLES = [-90,-64,-39,-13,13,39,64] #[-45, -15, 15] #[-90, -75, -60, -45, -30, -15]
 
 

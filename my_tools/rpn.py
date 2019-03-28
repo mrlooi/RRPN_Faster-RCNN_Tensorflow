@@ -279,6 +279,11 @@ class RPNLossComputation(object):
 
     def match_targets_to_anchors(self, anchor, target):#, copied_fields=[]):
         match_quality_matrix = rotate_iou(target, anchor)
+
+        # CUSTOM LOGIC: SET ALL ANCHORS VS TARGETS WITH ROTATION DIFF > 45 TO IOU OF 0 (to prevent rotation ambiguity)
+        angle_diffs = torch.abs(target[:,-1].unsqueeze(-1) - anchor[:, -1])
+        match_quality_matrix[angle_diffs >= 45] = 0
+
         matched_idxs = self.proposal_matcher(match_quality_matrix)
         # RPN doesn't need any fields from target
         # for creating the labels, so clear them all
