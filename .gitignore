@@ -109,3 +109,5 @@ data/tfrecord/
 
 tools/inference_results
 .vscode/
+
+*.pth

@@ -1,14 +1,14 @@
 import numpy as np
 
 # ---------------------------------------------Backbone network config
-class BACKBONE: object()
+# class BACKBONE: object()
 
-BACKBONE.STRIDES = [2,1,2,2]
-BACKBONE.KERNEL_SIZES = [7,7,5,5]
-BACKBONE.FILTERS = [64,128,256,256*2]
-BACKBONE.OUT_CHANNELS = BACKBONE.FILTERS[-1]
-assert len(BACKBONE.FILTERS) == len(BACKBONE.STRIDES) == len(BACKBONE.KERNEL_SIZES)
-BACKBONE.SPATIAL_STRIDE = np.prod(BACKBONE.STRIDES)
+# BACKBONE.STRIDES = [2,1,2,2]
+# BACKBONE.KERNEL_SIZES = [7,7,5,5]
+# BACKBONE.FILTERS = [64,128,256,256*2]
+# BACKBONE.OUT_CHANNELS = BACKBONE.FILTERS[-1]
+# assert len(BACKBONE.FILTERS) == len(BACKBONE.STRIDES) == len(BACKBONE.KERNEL_SIZES)
+# BACKBONE.SPATIAL_STRIDE = np.prod(BACKBONE.STRIDES)
 
 # ---------------------------------------------RPN config
 RPN_ONLY = True  #   WARN: RPN_ONLY=False Not Implemented!
