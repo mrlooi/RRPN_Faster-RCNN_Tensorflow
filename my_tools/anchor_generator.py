@@ -235,7 +235,7 @@ def bb_intersection_over_union(boxA, boxB):
 	return iou
 
 def convert_pts_to_rect(pts):
-    box = np.int0(pts)
+    box = pts.copy() # np.int0(np.round(pts))
     box = box.reshape([4, 2])
     rect1 = cv2.minAreaRect(box)
 
@@ -253,7 +253,7 @@ def convert_rect_to_pts(anchor):
     x_c, y_c, w, h, theta = anchor
     rect = ((x_c, y_c), (w, h), theta)
     rect = cv2.boxPoints(rect)
-    rect = np.int0(rect)
+    # rect = np.int0(np.round(rect))
     return rect
 
 def get_bounding_box(pts):
@@ -286,7 +286,10 @@ def draw_anchors(img, anchors, color_list=[], fill=False):
 
     for ix,anchor in enumerate(anchors):
         color = color_list[ix]
-        rect = convert_rect_to_pts(anchor)
+        rect = anchor
+        if len(anchor) != 8:
+            rect = convert_rect_to_pts(anchor)
+        rect = np.round(rect).astype(np.int32)
         if fill:
             cv2.fillConvexPoly(img_copy, rect, color)
         else:

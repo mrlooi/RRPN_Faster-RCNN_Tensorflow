@@ -1,48 +1,13 @@
 import cv2
 import numpy as np
 
-def convert_pts_to_rect(pts):
-    box = np.int0(pts)
-    box = box.reshape([4, 2])
-    rect1 = cv2.minAreaRect(box)
-
-    x, y, w, h, theta = rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], rect1[2]
-    if h > w:
-        h, w = w, h
-        theta = theta - 90
-    return np.array((x, y, w, h, theta), dtype=np.int32)
-
-def convert_rect_to_pts(rect_in):
-    x_c, y_c, w, h, theta = rect_in
-    rect = ((x_c, y_c), (w, h), theta)
-    rect_pts = cv2.boxPoints(rect)
-    rect_pts = np.int0(rect_pts)
-    return rect_pts
-
-
-def aa():
-    rects = np.array([
-        [100, 100, 100, 50, -90],
-        [100, 100, 50, 100, 0],
-        [100, 100, 50, 100, 90],
-        [100, 100, 50, 100, 91],
-        [100, 100, 20, 100, -90],
-        [100, 100, 70, 50, -30],
-    ], dtype=np.float32)
-
-    for r in rects:
-        pts = convert_rect_to_pts(r)
-        # print(pts)
-        print(convert_pts_to_rect(pts))
-
-
 RED = [0,0,255]
 BLUE = [255,0,0]
 GREEN = [0,255,0]
 
 if __name__ == '__main__':
     import config as cfg
-    from anchor_generator import generate_anchors, draw_anchors
+    from anchor_generator import generate_anchors, draw_anchors, convert_pts_to_rect, convert_rect_to_pts
     from rotate_ops import rotate_iou, nms_rotate_cpu, iou_rotate_cpu
 
     # import torch
