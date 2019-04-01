@@ -20,6 +20,8 @@ BLUE = (255,0,0)
 GREEN = (0,255,0)
 RED = (0,0,255)
 
+RESIZE_SHAPE = 224
+
 def train(model, data_loader):
     # from tensorboardX import SummaryWriter
     # writer = SummaryWriter()
@@ -34,7 +36,7 @@ def train(model, data_loader):
 
     n_iters = 1000
     lr = 1e-3
-    batch_size = 8
+    batch_size = 16
 
     optimizer = optim.Adam(model.parameters(), lr=lr)#, betas=(0.9, 0.999))
 
@@ -42,7 +44,7 @@ def train(model, data_loader):
     losses_dict = defaultdict(list)
     for iter in range(1,n_iters+1):
         data = data_loader.next_batch(batch_size)
-        img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=256, use_cuda=True)
+        img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=RESIZE_SHAPE, use_cuda=True)
 
         box_pred, loss_dict = model.forward(img_tensor, all_rects_resized)
 
@@ -86,7 +88,7 @@ def test(model, data_loader, batch_sz=8, min_score=0.95, use_cuda=False):
 
     data = data_loader.next_batch(batch_sz)
 
-    img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=256, use_cuda=use_cuda)
+    img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=RESIZE_SHAPE, use_cuda=use_cuda)
     box_preds, _ = model.forward(img_tensor)
 
     # min_score = 0.95
@@ -123,7 +125,7 @@ def test(model, data_loader, batch_sz=8, min_score=0.95, use_cuda=False):
         cv2.waitKey(0)
 
 if __name__ == "__main__":
-    img_size = 256
+    img_size = RESIZE_SHAPE
     min_objects=1
     max_objects=2
     fill = True

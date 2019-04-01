@@ -268,7 +268,7 @@ def get_bounding_box(pts):
 def get_random_color():
     return (np.random.randint(255), np.random.randint(255), np.random.randint(255))
 
-def draw_anchors(img, anchors, color_list=[], fill=False):
+def draw_anchors(img, anchors, color_list=[], fill=False, line_sz=2):
     """
     img: (H,W,3) np.uint8 array
     anchors: (N,5) np.float32 array, where each row is [xc,yc,w,h,angle]
@@ -293,7 +293,7 @@ def draw_anchors(img, anchors, color_list=[], fill=False):
         if fill:
             cv2.fillConvexPoly(img_copy, rect, color)
         else:
-            cv2.drawContours(img_copy, [rect], 0, color, 2)
+            cv2.drawContours(img_copy, [rect], 0, color, line_sz)
     return img_copy
 
 def draw_bounding_boxes(img, bboxes, color=(0,0,255)):
