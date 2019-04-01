@@ -507,7 +507,7 @@ at::Tensor rotate_iou_matrix_cuda(
   at::Tensor iou_matrix = at::zeros({N, M}, r_boxes1.options());
 
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-  _iou_matrix_launcher(iou_matrix.contiguous().data<float>(), r_boxes1.contiguous().data<float>(),
+  _iou_matrix_launcher(iou_matrix.data<float>(), r_boxes1.contiguous().data<float>(),
         r_boxes2.contiguous().data<float>(), N, M, stream);
 
   THCudaCheck(cudaGetLastError());
