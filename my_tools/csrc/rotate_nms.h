@@ -4,7 +4,7 @@
 #include <torch/extension.h>
 
 #ifdef WITH_CUDA
-#include "cuda/rotate_nms_cuda.h"
+#include "cuda/vision.h"
 #endif
 
 // Interface for Python

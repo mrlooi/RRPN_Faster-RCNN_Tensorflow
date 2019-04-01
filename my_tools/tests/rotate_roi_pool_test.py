@@ -4,6 +4,7 @@ import cv2
 from anchor_generator import generate_anchors, draw_anchors, convert_pts_to_rect, convert_rect_to_pts
 
 if __name__ == '__main__':
+    # ROIs are in original image coordinates
     rois = np.array([
         [100,100,100,50,60],  # xc,yc,w,h,angle
         [100, 100, 50, 100, 60],  # xc,yc,w,h,angle
@@ -15,33 +16,37 @@ if __name__ == '__main__':
     print(rois)
     rois = np.concatenate((batch_inds, rois), axis=1)
 
-    spatial_scale = 1.0
-
     imageWidth, imageHeight = (200,200)
-    imageWidth = int(imageWidth * spatial_scale)
-    imageHeight = int(imageHeight * spatial_scale)
-    width = imageWidth
-    height = imageHeight
 
+    # feature map size
+    spatial_scale = 1.0 / 2
+    width = int(imageWidth * spatial_scale)
+    height = int(imageHeight * spatial_scale)
+
+    # pooling size
     pooled_width, pooled_height = (4, 2)
 
     for bottom_rois in rois:
         roi_batch_ind = bottom_rois[0]
-        cx = bottom_rois[1]
-        cy = bottom_rois[2]
-        w = bottom_rois[3]
-        h = bottom_rois[4]
-        angle = np.deg2rad(bottom_rois[5])
+
+        # resize ROIs to spatial scale
+        cx = bottom_rois[1] * spatial_scale
+        cy = bottom_rois[2] * spatial_scale
+        w = bottom_rois[3] * spatial_scale
+        h = bottom_rois[4] * spatial_scale
+
+        angle_deg = bottom_rois[5]
+        angle = np.deg2rad(angle_deg)
 
         # compute values used to partition the ROI into the pooling dimensions
         dx = -pooled_width / 2.0
         dy = -pooled_height / 2.0
-        Sx = w * spatial_scale / pooled_width
-        Sy = h * spatial_scale / pooled_height
+        Sx = w / pooled_width
+        Sy = h / pooled_height
         Alpha = -np.cos(angle)
         Beta = np.sin(angle)
-        Dx = cx * spatial_scale
-        Dy = cy * spatial_scale
+        Dx = cx
+        Dy = cy
 
         M = np.zeros((2,3), dtype=np.float32)
         M[0][0] = Alpha * Sx
@@ -51,10 +56,10 @@ if __name__ == '__main__':
         M[1][1] = Alpha * Sy
         M[1][2] = -Beta * Sx * dx + Alpha * Sy * dy + Dy
 
-        canvas = np.zeros((imageHeight, imageWidth, 3), dtype=np.uint8)
-        canvas[::10,:] = np.linspace(0, 255*3, imageWidth*3).reshape((imageWidth, 3))
+        canvas = np.zeros((height, width, 3), dtype=np.uint8)
+        canvas[::10,:] = np.linspace(0, 255*3, width*3).reshape((width, 3))
         canvas_g = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
-        canvas = draw_anchors(canvas, [bottom_rois[1:]])
+        canvas = draw_anchors(canvas, [[cx,cy,w,h,angle_deg]])
         cv2.imshow("img", canvas)
         cv2.imshow("g", canvas_g)
 
@@ -79,9 +84,9 @@ if __name__ == '__main__':
 
                 # get the bounding box of the rotated rect
                 leftMost = int(max(round(min(min(P[0], P[2]), min(P[4], P[6]))), 0.0))
-                rightMost = int(min(round(max(max(P[0], P[2]), max(P[4], P[6]))), imageWidth - 1.0))
+                rightMost = int(min(round(max(max(P[0], P[2]), max(P[4], P[6]))), width - 1.0))
                 topMost = int(max(round(min(min(P[1], P[3]), min(P[5], P[7]))), 0.0))
-                bottomMost = int(min(round(max(max(P[1], P[3]), max(P[5], P[7]))), imageHeight - 1.0))
+                bottomMost = int(min(round(max(max(P[1], P[3]), max(P[5], P[7]))), height - 1.0))
 
                 # compute key vectors of the rotated rect, used to determine if a point is inside the rotated rect
                 AB = [P[2] - P[0], P[3] - P[1]]
@@ -111,7 +116,7 @@ if __name__ == '__main__':
                                 maxidx = bottom_index
 
                 if maxidx >= 0:
-                    hh = maxidx / width
+                    hh = maxidx // width
                     ww = maxidx % width
                     cv2.circle(canvas, (ww,hh), 1, (0,255,0), -1)
                     # canvas[hh,ww] = [0,255,0]
