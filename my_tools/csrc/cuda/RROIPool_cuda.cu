@@ -25,54 +25,123 @@ __global__ void RRoIPoolFForward(const int nthreads, const T* bottom_data,
     int c = (index / pooled_width / pooled_height) % channels;
     int n = index / pooled_width / pooled_height / channels;
 
-    const T* offset_bottom_rois = bottom_rois + n * 5;
+    const T* offset_bottom_rois = bottom_rois + n * 6;
     int roi_batch_ind = offset_bottom_rois[0];
-    int roi_start_w = round(offset_bottom_rois[1] * spatial_scale);
-    int roi_start_h = round(offset_bottom_rois[2] * spatial_scale);
-    int roi_end_w = round(offset_bottom_rois[3] * spatial_scale);
-    int roi_end_h = round(offset_bottom_rois[4] * spatial_scale);
+    T cx = round(offset_bottom_rois[1] * spatial_scale);
+    T cy = round(offset_bottom_rois[2] * spatial_scale);
+    T h = round(offset_bottom_rois[3] * spatial_scale);
+    T w = round(offset_bottom_rois[4] * spatial_scale);
+    T angle = offset_bottom_rois[5] / 180.0 * 3.1415926535;
 
     // Force malformed ROIs to be 1x1
-    int roi_width = max(roi_end_w - roi_start_w, 1);
-    int roi_height = max(roi_end_h - roi_start_h, 1);
-    T bin_size_h = static_cast<T>(roi_height)
-                       / static_cast<T>(pooled_height);
-    T bin_size_w = static_cast<T>(roi_width)
-                       / static_cast<T>(pooled_width);
+    w = max(w, 1.0);
+    h = max(h, 1.0);
 
-    int hstart = static_cast<int>(floor(static_cast<T>(ph)
-                                        * bin_size_h));
-    int wstart = static_cast<int>(floor(static_cast<T>(pw)
-                                        * bin_size_w));
-    int hend = static_cast<int>(ceil(static_cast<T>(ph + 1)
-                                     * bin_size_h));
-    int wend = static_cast<int>(ceil(static_cast<T>(pw + 1)
-                                     * bin_size_w));
+    //TransformPrepare
+    T dx = -pooled_width/2.0;
+    T dy = -pooled_height/2.0;
+    T Sx = w*spatial_scale/pooled_width;
+    T Sy = h*spatial_scale/pooled_height;
+    T Alpha = cos(angle);
+    T Beta = sin(angle);
+    T Dx = cx*spatial_scale;
+    T Dy = cy*spatial_scale;
 
-    // Add roi offsets and clip to input boundaries
-    hstart = min(max(hstart + roi_start_h, 0), height);
-    hend = min(max(hend + roi_start_h, 0), height);
-    wstart = min(max(wstart + roi_start_w, 0), width);
-    wend = min(max(wend + roi_start_w, 0), width);
-    bool is_empty = (hend <= hstart) || (wend <= wstart);
+    T M[2][3]; 
+    M[0][0] = Alpha*Sx;
+    M[0][1] = Beta*Sy;
+    M[0][2] = Alpha*Sx*dx+Beta*Sy*dy+Dx;
+    M[1][0] = -Beta*Sx;
+    M[1][1] = Alpha*Sy;
+    M[1][2] = -Beta*Sx*dx+Alpha*Sy*dy+Dy;
 
-    // Define an empty pooling region to be zero
-    T maxval = is_empty ? 0 : -FLT_MAX;
-    // If nothing is pooled, argmax = -1 causes nothing to be backprop'd
+    T P[8];
+    P[0] = M[0][0]*pw+M[0][1]*ph+M[0][2];
+    P[1] = M[1][0]*pw+M[1][1]*ph+M[1][2];
+    P[2] = M[0][0]*pw+M[0][1]*(ph+1)+M[0][2];
+    P[3] = M[1][0]*pw+M[1][1]*(ph+1)+M[1][2];
+    P[4] = M[0][0]*(pw+1)+M[0][1]*ph+M[0][2];
+    P[5] = M[1][0]*(pw+1)+M[1][1]*ph+M[1][2];
+    P[6] = M[0][0]*(pw+1)+M[0][1]*(ph+1)+M[0][2];
+    P[7] = M[1][0]*(pw+1)+M[1][1]*(ph+1)+M[1][2];
+
+    int leftMost = int(max(round(min(min(P[0],P[2]),min(P[4],P[6]))),0.0));
+    int rightMost= int(min(round(max(max(P[0],P[2]),max(P[4],P[6]))),width-1.0));
+    int topMost= int(max(round(min(min(P[1],P[3]),min(P[5],P[7]))),0.0));
+    int bottomMost= int(min(round(max(max(P[1],P[3]),max(P[5],P[7]))),height-1.0));
+
+    T maxval = 0;
     int maxidx = -1;
-    const T* offset_bottom_data =
-        bottom_data + (roi_batch_ind * channels + c) * height * width;
-    for (int h = hstart; h < hend; ++h) {
-      for (int w = wstart; w < wend; ++w) {
-        int bottom_index = h * width + w;
-        if (offset_bottom_data[bottom_index] > maxval) {
-          maxval = offset_bottom_data[bottom_index];
-          maxidx = bottom_index;
+    const T* offset_bottom_data = bottom_data + (roi_batch_ind * channels + c) * height * width;
+
+    T AB[2];
+    AB[0] = P[2] - P[0];
+    AB[1] = P[3] - P[1];  
+    T ABAB = AB[0]*AB[0] +AB[1]*AB[1];
+    T AC[2];
+    AC[0] = P[4] - P[0];
+    AC[1] = P[5] - P[1];
+    T ACAC = AC[0]*AC[0] + AC[1]*AC[1];
+
+    for (int h = topMost; h < bottomMost+1; ++h) {
+      for (int w = leftMost; w < rightMost+1; ++w) {
+        T AP[2];
+        AP[0] = w - P[0];
+        AP[1] = h - P[1];
+        T ABAP = AB[0]*AP[0] +AB[1]*AP[1];
+        T ACAP = AC[0]*AP[0] + AC[1]*AP[1];
+        if(ABAB>ABAP&&ABAP>=0&&ACAC>ACAP&&ACAP>=0)
+        {
+          int bottom_index = h * width + w;
+          if (offset_bottom_data[bottom_index] > maxval) 
+          {
+            maxval = offset_bottom_data[bottom_index];
+            maxidx = bottom_index;
+          }
         }
       }
     }
     top_data[index] = maxval;
     argmax_data[index] = maxidx;
+
+    // T bin_size_h = static_cast<T>(roi_height)
+    //                    / static_cast<T>(pooled_height);
+    // T bin_size_w = static_cast<T>(roi_width)
+    //                    / static_cast<T>(pooled_width);
+
+    // int hstart = static_cast<int>(floor(static_cast<T>(ph)
+    //                                     * bin_size_h));
+    // int wstart = static_cast<int>(floor(static_cast<T>(pw)
+    //                                     * bin_size_w));
+    // int hend = static_cast<int>(ceil(static_cast<T>(ph + 1)
+    //                                  * bin_size_h));
+    // int wend = static_cast<int>(ceil(static_cast<T>(pw + 1)
+    //                                  * bin_size_w));
+
+    // // Add roi offsets and clip to input boundaries
+    // hstart = min(max(hstart + roi_start_h, 0), height);
+    // hend = min(max(hend + roi_start_h, 0), height);
+    // wstart = min(max(wstart + roi_start_w, 0), width);
+    // wend = min(max(wend + roi_start_w, 0), width);
+    // bool is_empty = (hend <= hstart) || (wend <= wstart);
+
+    // // Define an empty pooling region to be zero
+    // T maxval = is_empty ? 0 : -FLT_MAX;
+    // // If nothing is pooled, argmax = -1 causes nothing to be backprop'd
+    // int maxidx = -1;
+    // const T* offset_bottom_data =
+    //     bottom_data + (roi_batch_ind * channels + c) * height * width;
+    // for (int h = hstart; h < hend; ++h) {
+    //   for (int w = wstart; w < wend; ++w) {
+    //     int bottom_index = h * width + w;
+    //     if (offset_bottom_data[bottom_index] > maxval) {
+    //       maxval = offset_bottom_data[bottom_index];
+    //       maxidx = bottom_index;
+    //     }
+    //   }
+    // }
+    // top_data[index] = maxval;
+    // argmax_data[index] = maxidx;
   }
 }
 
