@@ -163,11 +163,11 @@ if __name__ == '__main__':
         for c in range(C):
             canvas_copy2 = canvas_copy.copy()
             arg_idx = argmax[n,c].flatten()
-            idx = n * C * width * height + c * width * height
-            print(arg_idx)
+            # idx = (n * C + c) * height * width
+            # print(arg_idx)
             for a in arg_idx:
-                hh = (a - idx) // width # int(round((a // width) / spatial_scale))
-                ww = (a - idx) % width # int(round((a % width) / spatial_scale))
+                hh = a // width # int(round((a // width) / spatial_scale))
+                ww = a % width # int(round((a % width) / spatial_scale))
                 cv2.circle(canvas_copy2, (ww,hh), 1, GREEN, -1)
             cv2.imshow("canvas", canvas_copy2)
             cv2.waitKey(0)
