@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from network import DetectionNetwork
+from modeling.network import DetectionNetwork
 from data_loader import DataLoader
 # from utils import FT, LT
 

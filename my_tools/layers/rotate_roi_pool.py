@@ -18,11 +18,14 @@ class _RROIPool(Function):
             input, roi, spatial_scale, output_size[0], output_size[1]
         )
         ctx.save_for_backward(input, roi, argmax)
-        return output, argmax
+
+        return output, argmax  # DEBUG ONLY
+        # return output
 
     @staticmethod
     @once_differentiable
-    def backward(ctx, grad_output):
+    # def backward(ctx, grad_output):
+    def backward(ctx, grad_output, aaa): # DEBUG ONLY
         input, rois, argmax = ctx.saved_tensors
         output_size = ctx.output_size
         spatial_scale = ctx.spatial_scale

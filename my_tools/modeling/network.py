@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from rpn import RPNHead, RPNModule
+from modeling.rpn import RPNHead, RPNModule
 
 
 def init_conv_weights(m):
