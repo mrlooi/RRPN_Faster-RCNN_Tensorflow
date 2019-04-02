@@ -18,7 +18,7 @@ class _RROIPool(Function):
             input, roi, spatial_scale, output_size[0], output_size[1]
         )
         ctx.save_for_backward(input, roi, argmax)
-        return output
+        return output, argmax
 
     @staticmethod
     @once_differentiable

@@ -29,8 +29,8 @@ __global__ void RRoIPoolFForward(const int nthreads, const T* bottom_data,
     int roi_batch_ind = offset_bottom_rois[0];
     T cx = round(offset_bottom_rois[1] * spatial_scale);
     T cy = round(offset_bottom_rois[2] * spatial_scale);
-    T h = round(offset_bottom_rois[3] * spatial_scale);
-    T w = round(offset_bottom_rois[4] * spatial_scale);
+    T w = round(offset_bottom_rois[3] * spatial_scale);
+    T h = round(offset_bottom_rois[4] * spatial_scale);
     T angle = offset_bottom_rois[5] / 180.0 * 3.1415926535;
 
     // Force malformed ROIs to be 1x1
@@ -40,12 +40,12 @@ __global__ void RRoIPoolFForward(const int nthreads, const T* bottom_data,
     //TransformPrepare
     T dx = -pooled_width/2.0;
     T dy = -pooled_height/2.0;
-    T Sx = w*spatial_scale/pooled_width;
-    T Sy = h*spatial_scale/pooled_height;
-    T Alpha = cos(angle);
+    T Sx = w / pooled_width;
+    T Sy = h / pooled_height;
+    T Alpha = -cos(angle);
     T Beta = sin(angle);
-    T Dx = cx*spatial_scale;
-    T Dy = cy*spatial_scale;
+    T Dx = cx;
+    T Dy = cy;
 
     T M[2][3]; 
     M[0][0] = Alpha*Sx;
@@ -83,16 +83,16 @@ __global__ void RRoIPoolFForward(const int nthreads, const T* bottom_data,
     AC[1] = P[5] - P[1];
     T ACAC = AC[0]*AC[0] + AC[1]*AC[1];
 
-    for (int h = topMost; h < bottomMost+1; ++h) {
-      for (int w = leftMost; w < rightMost+1; ++w) {
+    for (int hh = topMost; hh < bottomMost+1; ++hh) {
+      for (int ww = leftMost; ww < rightMost+1; ++ww) {
         T AP[2];
-        AP[0] = w - P[0];
-        AP[1] = h - P[1];
+        AP[0] = ww - P[0];
+        AP[1] = hh - P[1];
         T ABAP = AB[0]*AP[0] +AB[1]*AP[1];
         T ACAP = AC[0]*AP[0] + AC[1]*AP[1];
         if(ABAB>ABAP&&ABAP>=0&&ACAC>ACAP&&ACAP>=0)
         {
-          int bottom_index = h * width + w;
+          int bottom_index = hh * width + ww;
           if (offset_bottom_data[bottom_index] > maxval) 
           {
             maxval = offset_bottom_data[bottom_index];
@@ -158,7 +158,7 @@ __global__ void RRoIPoolFBackward(const int nthreads, const T* top_diff,
     int c = (index / pooled_width / pooled_height) % channels;
     int n = index / pooled_width / pooled_height / channels;
 
-    const T* offset_bottom_rois = bottom_rois + n * 5;
+    const T* offset_bottom_rois = bottom_rois + n * 6;
     int roi_batch_ind = offset_bottom_rois[0];
     int bottom_offset = (roi_batch_ind * channels + c) * height * width;
     int top_offset    = (n * channels + c) * pooled_height * pooled_width;
