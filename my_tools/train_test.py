@@ -20,9 +20,9 @@ BLUE = (255,0,0)
 GREEN = (0,255,0)
 RED = (0,0,255)
 
-RESIZE_SHAPE = 224
+RESIZE_SHAPE = 256
 
-def train(model, data_loader):
+def train(model, data_loader, batch_size=4):
     # from tensorboardX import SummaryWriter
     # writer = SummaryWriter()
 
@@ -36,7 +36,6 @@ def train(model, data_loader):
 
     n_iters = 1000
     lr = 1e-3
-    batch_size = 16
 
     optimizer = optim.Adam(model.parameters(), lr=lr)#, betas=(0.9, 0.999))
 
@@ -79,6 +78,42 @@ def train(model, data_loader):
     # print("iter %d of %d -> Total loss: %.4f, Avg loss: %.4f"%(iter, n_iters, np.mean(losses), np.mean(all_losses)))
     # writer.close()
 
+def custom_model_inference(model, img_tensor):
+    x = img_tensor
+
+    features = model.backbone(x)
+    rpn_pred, rpn_losses = model.rpn(x, features)
+    detector_pred = [[] for p in rpn_pred]
+    if model.roi_heads:
+        proposals = [pp[:, :5] for pp in rpn_pred]  # last dim (score) not needed
+        x, detector_pred, _ = model.roi_heads(features, proposals)
+        detector_pred = [p.detach().cpu().numpy() for p in detector_pred]
+
+    # result, _ = model.forward(x)
+    rpn_pred = [p.detach().cpu().numpy() for p in rpn_pred]
+    return rpn_pred, detector_pred, {}
+
+def visualize_box_preds(img, box_preds, min_score=0.9, color=RED):
+    score = box_preds[:, -1]
+    box_pred = box_preds[:, :-1]
+
+    valids = score > min_score
+    if np.sum(valids) > 0:
+        score = score[valids]
+        valid_box_pred = box_pred[valids]
+
+        sorted_idx = np.argsort(score)[::-1]
+        # sorted_score = score[sorted_idx]
+        sorted_pred = valid_box_pred[sorted_idx]
+
+        # H,W = img.shape[:2]
+        # canvas = np.zeros(img.shape, dtype=np.uint8)
+        canvas = draw_anchors(img, sorted_pred, color)
+    else:
+        canvas = np.zeros_like(img)
+
+    return canvas
+
 def test(model, data_loader, batch_sz=8, min_score=0.95, use_cuda=False):
     model.eval()
     if use_cuda:
@@ -89,7 +124,8 @@ def test(model, data_loader, batch_sz=8, min_score=0.95, use_cuda=False):
     data = data_loader.next_batch(batch_sz)
 
     img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=RESIZE_SHAPE, use_cuda=use_cuda)
-    box_preds, _ = model.forward(img_tensor)
+    # box_preds, _ = model(img_tensor) # custom_model_inference(model, img_tensor)
+    rpn_preds, box_preds, _ = custom_model_inference(model, img_tensor)
 
     # min_score = 0.95
 
@@ -97,55 +133,53 @@ def test(model, data_loader, batch_sz=8, min_score=0.95, use_cuda=False):
         img = img_t.detach().cpu().numpy()
         img = np.transpose(img, [1,2,0])
 
-        box_pred, score = box_preds[ix]
-        box_pred = box_pred.detach().cpu().numpy()
-        score = score.detach().cpu().numpy()
-
-        top_k = 3
-        best_score_inds = np.argsort(score)[::-1][:top_k]
-
         cv2.imshow("img", img)
-        cv2.imshow("top%d preds" % (top_k), draw_anchors(img, box_pred[best_score_inds], (0, 0, 255)))
-        # print(score[best_score_inds])
 
+        rpn_pred = rpn_preds[ix]  # (N, 6) -> [xc,yc,w,h,angle,score]
+        if len(rpn_pred) > 0:
+            img_rpn_pred = visualize_box_preds(img, rpn_pred, min_score, BLUE)
+            cv2.imshow("rpn pred > %.3f"%(min_score), img_rpn_pred)
 
-        valids = score > min_score
-        if np.sum(valids) > 0:
-            score = score[valids]
-            box_pred = box_pred[valids]
+        box_pred = box_preds[ix]  # (N, 6) -> [xc,yc,w,h,angle,score]
+        if len(box_pred) > 0:
+            img_box_pred = visualize_box_preds(img, box_pred, min_score, RED)
+            cv2.imshow("box pred > %.3f"%(min_score), img_box_pred)
 
-            sorted_idx = np.argsort(score)[::-1]
-            # sorted_score = score[sorted_idx]
-            sorted_pred = box_pred[sorted_idx]
-
-            # H,W = img.shape[:2]
-            # canvas = np.zeros(img.shape, dtype=np.uint8)
-            canvas = draw_anchors(img, sorted_pred, (0,0,255))
-            cv2.imshow("pred > %.3f"%(min_score), canvas)
         cv2.waitKey(0)
 
 if __name__ == "__main__":
     img_size = RESIZE_SHAPE
     min_objects=1
-    max_objects=2
+    max_objects=3
     fill = True
 
+    RPN_ONLY = False
+    save_path = "model_rpn_0.pth"
+    train_batch_sz = 16
+    test_batch_sz = 32
+
+    if not RPN_ONLY:
+        save_path = "model_detector_0.pth"
+        train_batch_sz = 8
+        test_batch_sz = 16
+
     data_loader = DataLoader(img_size, min_objects, max_objects, fill=fill)
-    data = data_loader.next_batch(4)
+    # data = data_loader.next_batch(4)
     # data_loader.visualize(data)
     # img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=128)
     # img_t = [np.transpose(im, [1,2,0]) for im in img_tensor.numpy()]
     # data_loader.visualize([img_t, all_rects_resized])
 
     import config as cfg
+    cfg.RPN_ONLY = RPN_ONLY
     model = DetectionNetwork(cfg)
 
-    save_path = "model_rpn_0.pth"
-    model.load_state_dict(torch.load(save_path))
-    print("Loaded %s"%(save_path))
+    if os.path.exists(save_path):
+        model.load_state_dict(torch.load(save_path))
+        print("Loaded %s"%(save_path))
 
-    # train(model, data_loader)
+    # train(model, data_loader, train_batch_sz)
     # torch.save(model.state_dict(), save_path)
 
-    test(model, data_loader, batch_sz=32, use_cuda=True)
+    test(model, data_loader, batch_sz=test_batch_sz, use_cuda=True, min_score=0.95)
 

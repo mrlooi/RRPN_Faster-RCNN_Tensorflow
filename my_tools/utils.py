@@ -7,6 +7,24 @@ def FT(x): return torch.FloatTensor(x)
 def LT(x): return torch.LongTensor(x)
 
 
+def cat(tensors, dim=0):
+    """
+    Efficient version of torch.cat that avoids a copy if there is only a single element in a list
+    """
+    assert isinstance(tensors, (list, tuple))
+    if len(tensors) == 1:
+        return tensors[0]
+    return torch.cat(tensors, dim)
+
+def get_unique_count(x):
+    """
+    Returns the count of unique elements in the tensor, in sorted order
+    :return:
+    """
+    x_unique = x.unique(sorted=True)
+    x_unique_count = torch.stack([(x == x_u).sum() for x_u in x_unique])
+    return x_unique_count
+
 def stack(x, dim=0, lib=np):
     if lib == np:
         return lib.stack(x, axis=dim)

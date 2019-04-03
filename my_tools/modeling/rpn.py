@@ -99,7 +99,7 @@ class RPNModule(torch.nn.Module):
         else:
             # For end-to-end models, anchors must be transformed into boxes and
             # sampled into a training batch.
-            raise NotImplementedError
+            # raise NotImplementedError
 
             with torch.no_grad():
                 boxes = self.box_selector_train(
@@ -109,7 +109,7 @@ class RPNModule(torch.nn.Module):
             anchors, objectness, rpn_box_regression, targets
         )
         losses = {
-            "loss_objectness": loss_objectness,
+            "loss_rpn_objectness": loss_objectness,
             "loss_rpn_box_reg": loss_rpn_box_reg,
             "loss_rpn_box_angle": loss_rpn_box_angle
         }
@@ -210,10 +210,11 @@ class RPNPostProcessor(torch.nn.Module):
             # ASSUMES proposals are already sorted by score!
             keep = self.nms_rotate(proposal)
 
-            final_proposal = proposal[keep]
-            final_score = score[keep]
+            final_proposal = proposal[keep]  # (N,REGRESSION_CN)
+            final_score = score[keep].unsqueeze(1)  # (N,1)
 
-            result.append([final_proposal, final_score])
+            out = torch.cat((final_proposal, final_score), 1)  # (N, REGRESSION_CN + 1)
+            result.append(out)
         # for proposal, score, im_shape in zip(proposals, objectness, image_shapes):
         #     boxlist = BoxList(proposal, im_shape, mode="xyxy")
         #     boxlist.add_field("objectness", score)
@@ -229,8 +230,42 @@ class RPNPostProcessor(torch.nn.Module):
 
         return result
 
-    def forward(self, anchors, objectness, box_regression):
-        return self.forward_for_single_feature_map(anchors, objectness, box_regression)
+    def forward(self, anchors, objectness, box_regression, targets=None):
+        results = self.forward_for_single_feature_map(anchors, objectness, box_regression) # [[final_proposal, final_score],...]
+
+        # append ground-truth bboxes to proposals
+        if self.training and targets is not None:
+            results = self.add_gt_proposals(results, targets)
+
+        return results
+
+    def add_gt_proposals(self, proposals, targets):
+        """
+        Arguments:
+            proposals: list[BoxList]
+            targets: list[BoxList]
+        """
+        # Get the device we're operating on
+        device = proposals[0].device
+
+        # gt_boxes = [target.copy_with_fields([]) for target in targets]
+
+        # later cat of bbox requires all fields to be present for all bbox
+        # so we need to add a dummy for objectness that's missing
+        # for proposal, target in zip(proposals, targets):
+        for ix, target in enumerate(targets):
+            objectness = torch.ones(len(target), 1, device=device) # (N,1)
+            gt_box = torch.cat((target, objectness), 1)  # (N, REGRESSION_CN + 1)
+            proposals[ix] = torch.cat((proposals[ix], gt_box), 0)
+            # proposal[1] = torch.cat((proposal[1], torch.ones(len(gt_box), device=device)))
+            # gt_box.add_field("objectness", torch.ones(len(gt_box), device=device))
+
+        # proposals = [
+        #     cat_boxlist((proposal, gt_box))
+        #     for proposal, gt_box in zip(proposals, gt_boxes)
+        # ]
+
+        return proposals
 
 def make_rpn_postprocessor(config, rpn_box_coder, is_train):
     # fpn_post_nms_top_n = config.RPN.FPN_POST_NMS_TOP_N_TRAIN
@@ -280,9 +315,10 @@ class RPNLossComputation(object):
     def match_targets_to_anchors(self, anchor, target):#, copied_fields=[]):
         match_quality_matrix = rotate_iou(target, anchor)
 
-        # CUSTOM LOGIC: SET ALL ANCHORS VS TARGETS WITH ROTATION DIFF > 45 TO IOU OF 0 (to prevent rotation ambiguity)
+        # CUSTOM LOGIC: SET ALL ANCHORS VS TARGETS WITH ROTATION DIFF > angle threshold TO IOU OF 0 (to prevent rotation ambiguity)
+        ANGLE_THRESH = 45 # degrees
         angle_diffs = torch.abs(target[:,-1].unsqueeze(-1) - anchor[:, -1])
-        match_quality_matrix[angle_diffs >= 45] = 0
+        match_quality_matrix[angle_diffs >= ANGLE_THRESH] = 0
 
         matched_idxs = self.proposal_matcher(match_quality_matrix)
         # RPN doesn't need any fields from target
@@ -335,9 +371,9 @@ class RPNLossComputation(object):
 
             labels.append(labels_per_image)
             regression_targets.append(regression_targets_per_image)
-            matched_target_idxs.append(matched_idxs.clamp(min=0))
+            # matched_target_idxs.append(matched_idxs.clamp(min=0))
 
-        return labels, regression_targets, matched_target_idxs
+        return labels, regression_targets#, matched_target_idxs
 
 
     def __call__(self, anchors, objectness, box_regression, targets):
@@ -355,7 +391,7 @@ class RPNLossComputation(object):
         # anchors = [cat_boxlist(anchors_per_image) for anchors_per_image in anchors]
         # aaa = [t[:,2] - t[:,3] for t in targets]
         # bbb = torch.sum(torch.cat([a[:, 2] < a[:, 3] for a in anchors]))
-        labels, regression_targets, matched_target_idxs = self.prepare_targets(anchors, targets)
+        labels, regression_targets = self.prepare_targets(anchors, targets)
         sampled_pos_inds, sampled_neg_inds = self.fg_bg_sampler(labels)
         sampled_pos_inds = torch.nonzero(torch.cat(sampled_pos_inds, dim=0)).squeeze(1)
         sampled_neg_inds = torch.nonzero(torch.cat(sampled_neg_inds, dim=0)).squeeze(1)
@@ -380,10 +416,11 @@ class RPNLossComputation(object):
 
         pos_regression = regression[sampled_pos_inds]  # (N, 5) -> xc,yc,w,h,theta
         pos_regression_targets = regression_targets[sampled_pos_inds]  # (N, 5) -> xc,yc,w,h,theta
-        pos_angles = pos_regression[:, -1].clone()
-        pos_angles_targets = pos_regression_targets[:, -1].clone()
+        pos_angles = pos_regression[:, -1]#.clone()
+        pos_angles_targets = pos_regression_targets[:, -1]#.clone()
         box_loss = smooth_l1_loss(
-            pos_regression[:,:-1].clone() - pos_regression_targets[:,:-1].clone(),
+            # pos_regression[:,:-1].clone() - pos_regression_targets[:,:-1].clone(),
+            pos_regression[:, :-1] - pos_regression_targets[:, :-1],
             beta=1.0 / 9,
             size_average=False,
         )
@@ -451,3 +488,9 @@ def make_rpn_loss_evaluator(cfg, box_coder):
         # generate_rpn_labels
     )
     return loss_evaluator
+
+
+def build_rpn(cfg, in_channels):    
+    # rpn = RPNHead(in_channels, num_anchors)
+    rpn = RPNModule(cfg, in_channels)
+    return rpn

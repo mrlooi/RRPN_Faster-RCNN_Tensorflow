@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 
-from modeling.rpn import RPNHead, RPNModule
-
+from modeling.rpn import build_rpn
+from modeling.roi_heads import build_roi_heads
 
 def init_conv_weights(m):
     if type(m) == nn.Conv2d:
@@ -79,50 +79,34 @@ class DetectionNetwork(nn.Module):
         # self.num_anchors_per_location = len(cfg.ANCHOR_SCALES) * len(cfg.ANCHOR_RATIOS) * len(cfg.ANCHOR_ANGLES)
         # print("Total anchors: %d"%(self.num_anchors_per_location))
         
-        # self.backbone, backbone_out_channels = self.build_backbone()
         self.backbone = VGGX(in_channels)
         backbone_out_channels = self.backbone.conv_dim_out[-1]
         self.backbone.apply(init_conv_weights)
-        self.rpn = self.build_rpn(backbone_out_channels)#, self.num_anchors_per_location)
+
+        self.rpn = build_rpn(self.cfg, backbone_out_channels)#, self.num_anchors_per_location)
+        
+        self.roi_heads = build_roi_heads(self.cfg, backbone_out_channels)
 
     def forward(self, x, targets=None):
+        if self.training and targets is None:
+            raise ValueError("In training mode, targets should be passed")
+            
         features = self.backbone(x)
 
-        rpn_box_pred, rpn_losses = self.rpn(x, features, targets)
+        rpn_proposals, rpn_losses = self.rpn(x, features, targets)  # rpn_proposals: (N, 6) -> xc,yc,w,h,angle,score
 
-        if not self.cfg.RPN_ONLY:
-            raise NotImplementedError
+        if self.roi_heads:
+            proposals = [pp[:, :5] for pp in rpn_proposals]   # last dim (score) not needed
+            x, result, detector_losses = self.roi_heads(features, proposals, targets)
+        else:
+            # RPN-only models don't have roi_heads
+            # x = features
+            result = rpn_proposals
+            detector_losses = {}
 
         losses = {}
-        losses.update(rpn_losses)
+        if self.training:
+            losses.update(rpn_losses)
+            losses.update(detector_losses)
 
-        return rpn_box_pred, losses
-
-    # def build_full_network(self):
-    #     backbone = self.build_backbone()
-    #     return backbone
-
-    def build_rpn(self, in_channels):
-        
-        # rpn = RPNHead(in_channels, num_anchors)
-        rpn = RPNModule(self.cfg, in_channels)
-        return rpn
-
-    # def build_backbone(self):
-    #     # from layers import conv_transpose2d_by_factor
-
-    #     backbone = nn.Sequential()
-
-    #     c = self.cfg.BACKBONE
-    #     cur_filters = self.in_channels
-    #     ix = 1
-    #     for stride, k, filters in zip(c.STRIDES, c.KERNEL_SIZES, c.FILTERS):
-    #         conv = nn.Conv2d(cur_filters, filters, kernel_size=k, stride=stride, padding=k//2)
-    #         backbone.add_module("conv_%d"%(ix), conv)
-    #         backbone.add_module("bn_%d"%(ix), nn.BatchNorm2d(filters))
-    #         backbone.add_module("relu_%d"%(ix), nn.ReLU())
-
-    #         cur_filters = filters
-    #         ix += 1
-
-    #     return backbone, cur_filters
+        return result, losses
