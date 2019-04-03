@@ -150,7 +150,7 @@ def test(model, data_loader, batch_sz=8, min_score=0.95, use_cuda=False):
 if __name__ == "__main__":
     img_size = RESIZE_SHAPE
     min_objects=1
-    max_objects=3
+    max_objects=1
     fill = True
 
     RPN_ONLY = False
