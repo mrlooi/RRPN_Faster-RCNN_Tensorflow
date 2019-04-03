@@ -102,7 +102,7 @@ __global__ void RoIAlignForward(const int nthreads, const T* bottom_data,
     int roi_bin_grid_h = (sampling_ratio > 0) ? sampling_ratio : ceil(roi_height / pooled_height); // e.g., = 2
     int roi_bin_grid_w = (sampling_ratio > 0) ? sampling_ratio : ceil(roi_width / pooled_width);
 
-    printf("roi_width: %.1f, roi_height: %.1f, roi_bin_grid: (%d,%d)\n", roi_width, roi_height, roi_bin_grid_h, roi_bin_grid_w);
+//    printf("roi_width: %.1f, roi_height: %.1f, roi_bin_grid: (%d,%d)\n", roi_width, roi_height, roi_bin_grid_h, roi_bin_grid_w);
 
     // We do average (integral) pooling inside a bin
     const T count = roi_bin_grid_h * roi_bin_grid_w; // e.g. = 4
@@ -117,10 +117,10 @@ __global__ void RoIAlignForward(const int nthreads, const T* bottom_data,
 
         T val = bilinear_interpolate(offset_bottom_data, height, width, y, x, index);
         output_val += val;
-        printf("%.2f\n", val);
+//        printf("%.2f\n", val);
       }
     }
-    printf("output_val: %.2f, count: %.1f\n", output_val, count);
+//    printf("output_val: %.2f, count: %.1f\n", output_val, count);
     output_val /= count;
 
     top_data[index] = output_val;
