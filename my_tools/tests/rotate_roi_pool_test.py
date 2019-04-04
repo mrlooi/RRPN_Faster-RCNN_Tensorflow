@@ -128,7 +128,8 @@ def rotate_roi_pool_cpu(image, rois, pool_dims, spatial_scale=1.0):
                             ACAP = AC[0] * AP[0] + AC[1] * AP[1]
 
                             # if pixel is inside the rotated rect
-                            if ABAB > ABAP and ABAP >= 0 and ACAC > ACAP and ACAP >= 0:
+                            # if ABAB > ABAP and ABAP >= 0 and ACAC > ACAP and ACAP >= 0:
+                            if ABAP >= 1e-3 and (ABAB - ABAP) > -1e-3 and ACAP >= 1e-3 and (ACAC - ACAP) > -1e-3:
                                 bottom_index = hh * width + ww
                                 # canvas2[hh,ww] = [255,0,0]
                                 val = input_cn[hh,ww]

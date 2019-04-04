@@ -13,6 +13,12 @@
        i += blockDim.x * gridDim.x)
 
 template <typename T>
+__device__ inline T deg2rad(const T deg)
+{
+    return deg / 180.0 * 3.1415926535;
+}
+
+template <typename T>
 __device__ void compute_roi_pool_pts(const T* roi, T* out_pts, const T spatial_scale,
     const int pooled_height, const int pooled_width, const int pooled_height_idx, const int pooled_width_idx)
 {
@@ -24,7 +30,7 @@ __device__ void compute_roi_pool_pts(const T* roi, T* out_pts, const T spatial_s
   T cy = round(roi[2] * spatial_scale);
   T w = round(roi[3] * spatial_scale);
   T h = round(roi[4] * spatial_scale);
-  T angle = roi[5] / 180.0 * 3.1415926535;
+  T angle = deg2rad(roi[5]);
 
   // Force malformed ROIs to be 1x1
   w = max(w, 1.0);
@@ -102,9 +108,9 @@ __global__ void RRoIPoolFForward(const int nthreads, const T* bottom_data,
         T AP[2];
         AP[0] = ww - P[0];
         AP[1] = hh - P[1];
-        T ABAP = AB[0]*AP[0] +AB[1]*AP[1];
+        T ABAP = AB[0]*AP[0] + AB[1]*AP[1];
         T ACAP = AC[0]*AP[0] + AC[1]*AP[1];
-        if(ABAB>ABAP&&ABAP>=0&&ACAC>ACAP&&ACAP>=0)
+        if ( ABAP >= 1e-3 && (ABAB - ABAP) > -1e-3 && ACAP >= 1e-3 && (ACAC - ACAP) > -1e-3 )
         {
           int bottom_index = hh * width + ww;
           if (offset_bottom_data[bottom_index] > maxval) 
