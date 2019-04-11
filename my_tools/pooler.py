@@ -1,7 +1,8 @@
 import torch
 from torch import nn
 
-from layers.rotate_roi_pool import RROIPool
+# from layers.rotate_roi_pool import RROIPool as RROI
+from layers.rotate_roi_align import RROIAlign as RROI
 from utils import cat
 
 class Pooler(nn.Module):
@@ -29,7 +30,7 @@ class Pooler(nn.Module):
 
         for scale in scales:
             poolers.append(
-                RROIPool(
+                RROI(
                     output_size, spatial_scale=scale#, sampling_ratio=sampling_ratio
                 )
             )
@@ -66,7 +67,8 @@ class Pooler(nn.Module):
         num_levels = len(self.poolers)
         rois = self.convert_to_roi_format(boxes)
         if num_levels == 1:
-            out, argmax = self.poolers[0](x, rois) # TODO: REMOVE ARGMAX (DEBUG?)
+            # out, argmax = self.poolers[0](x, rois) # TODO: REMOVE ARGMAX (DEBUG?)
+            out = self.poolers[0](x, rois) # TODO: REMOVE ARGMAX (DEBUG?)
             return out
         else:
             raise NotImplementedError

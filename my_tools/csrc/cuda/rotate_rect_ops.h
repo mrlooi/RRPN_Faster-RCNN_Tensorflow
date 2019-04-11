@@ -307,16 +307,7 @@ __DEVICE__ int rotatedRectangleIntersection( const T* rect_pts1, const T* rect_p
 
     T intersectingRegion2[(4*4+4+4)*2];
 
-    // Line test - test all line combos for intersection
-    int num_intersects = compute_rect_line_intersects(rect_pts1, rect_pts2, vec1, vec2, intersectingRegion2 + out_num_intersects * 2);
-    out_num_intersects += num_intersects;
-
-    // printf("compute_rect_line_intersects: %d\n", num_intersects);
-
-    if( num_intersects != 0 )
-    {
-        ret = RectIntersectTypes::INTERSECT_PARTIAL;
-    }
+    int num_intersects = 0;
 
     // Check for vertices from rect1 inside rect2
     num_intersects = compute_rect_vertices_intersects(rect_pts1, rect_pts2, vec2, intersectingRegion2 + out_num_intersects * 2);
@@ -325,17 +316,27 @@ __DEVICE__ int rotatedRectangleIntersection( const T* rect_pts1, const T* rect_p
 
     if (num_intersects == 4) // rect1 is fully inside rect2
     {
-        ret = RectIntersectTypes::INTERSECT_FULL_1;
-    } else {
-        // Reverse the check - check for vertices from rect2 inside rect1
-        num_intersects = compute_rect_vertices_intersects(rect_pts2, rect_pts1, vec1, intersectingRegion2 + out_num_intersects * 2);
-        out_num_intersects += num_intersects;
-        // printf("compute_rect_vertices_intersects 2 inside 1: %d\n", num_intersects);
+        return RectIntersectTypes::INTERSECT_FULL_1;
+    }
 
-        if (num_intersects == 4) // rect2 is fully inside rect1
-        {
-            ret = RectIntersectTypes::INTERSECT_FULL_2;
-        }
+    // Reverse the check - check for vertices from rect2 inside rect1
+    num_intersects = compute_rect_vertices_intersects(rect_pts2, rect_pts1, vec1, intersectingRegion2 + out_num_intersects * 2);
+    out_num_intersects += num_intersects;
+    // printf("compute_rect_vertices_intersects 2 inside 1: %d\n", num_intersects);
+
+    if (num_intersects == 4) // rect2 is fully inside rect1
+    {
+        return RectIntersectTypes::INTERSECT_FULL_2;
+    }
+
+    // Line test - test all line combos for intersection
+    num_intersects = compute_rect_line_intersects(rect_pts1, rect_pts2, vec1, vec2, intersectingRegion2 + out_num_intersects * 2);
+    out_num_intersects += num_intersects;
+
+    // printf("compute_rect_line_intersects: %d\n", num_intersects);
+    if( num_intersects != 0 )
+    {
+        ret = RectIntersectTypes::INTERSECT_PARTIAL;
     }
 
     num_intersects = filter_duplicate_intersections(out_num_intersects, intersectingRegion2, intersectingRegion, samePointEps, MAX_RECT_INTERSECTIONS);

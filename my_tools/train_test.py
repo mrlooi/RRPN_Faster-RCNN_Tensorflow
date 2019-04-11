@@ -9,6 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import time
+
 from modeling.network import DetectionNetwork
 from data_loader import DataLoader
 # from utils import FT, LT
@@ -41,6 +43,8 @@ def train(model, data_loader, batch_size=4):
 
     all_losses_dict = defaultdict(list)
     losses_dict = defaultdict(list)
+
+    start_time = time.time()
     for iter in range(1,n_iters+1):
         data = data_loader.next_batch(batch_size)
         img_tensor, all_rects_resized = data_loader.convert_data_batch_to_tensor(data, resize_shape=RESIZE_SHAPE, use_cuda=True)
@@ -67,7 +71,8 @@ def train(model, data_loader, batch_size=4):
                 v = np.mean(vv)
                 out_msg += "%s) %.3f, "%(k, v)
             losses_dict.clear()
-            print("iter %d of %d -> %s"%(iter, n_iters, out_msg))
+            print("iter %d of %d -> %s (time taken: %.2f s)"%(iter, n_iters, out_msg, time.time() - start_time))
+            start_time = time.time()
 
     out_msg = ""
     for k, vv in all_losses_dict.items():
@@ -161,7 +166,7 @@ if __name__ == "__main__":
     if not RPN_ONLY:
         save_path = "model_detector_0.pth"
         train_batch_sz = 8
-        test_batch_sz = 16
+        test_batch_sz = 24
 
     data_loader = DataLoader(img_size, min_objects, max_objects, fill=fill)
     # data = data_loader.next_batch(4)
@@ -174,11 +179,11 @@ if __name__ == "__main__":
     cfg.RPN_ONLY = RPN_ONLY
     model = DetectionNetwork(cfg)
 
-    if os.path.exists(save_path):
-        model.load_state_dict(torch.load(save_path))
-        print("Loaded %s"%(save_path))
+    # if os.path.exists(save_path):
+    #     model.load_state_dict(torch.load(save_path))
+    #     print("Loaded %s"%(save_path))
 
-    # train(model, data_loader, train_batch_sz)
+    train(model, data_loader, train_batch_sz)
     # torch.save(model.state_dict(), save_path)
 
     test(model, data_loader, batch_sz=test_batch_sz, use_cuda=True, min_score=0.95)

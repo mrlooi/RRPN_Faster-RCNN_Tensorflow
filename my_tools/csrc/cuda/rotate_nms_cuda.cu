@@ -28,7 +28,7 @@
   } while (0)
 
 #define DIVUP(m,n) ((m) / (n) + ((m) % (n) > 0))
-int const threadsPerBlock = sizeof(unsigned long long) * 8;
+int const threadsPerBlock = 512;
 
 
 template <typename T>

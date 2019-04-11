@@ -56,7 +56,7 @@ __global__ void RRoIAlignFForward(const int nthreads, const T* bottom_data,
         // T pixel_rect[5] = {ww+0.5f,hh+0.5f,1,1,0};
         T pixel_rect_vertices[8] = {ww+0.0f,hh+0.0f,ww+1.0f,hh+0.0f,ww+1.0f,hh+1.0f,ww+0.0f,hh+1.0f};
         
-        T inter_area = computeRectInterArea(P, pixel_rect_vertices);
+        T inter_area = computeRectInterArea(pixel_rect_vertices, P);
         T px_weight = inter_area / P_area;
         output_val += px_weight * offset_bottom_data[hh * width + ww];
       }
@@ -102,7 +102,7 @@ __global__ void RRoIAlignBackwardFeature(const int nthreads, const T* top_diff,
         // T pixel_rect[5] = {ww+0.5f,hh+0.5f,1,1,0};
         T pixel_rect_vertices[8] = {ww+0.0f,hh+0.0f,ww+1.0f,hh+0.0f,ww+1.0f,hh+1.0f,ww+0.0f,hh+1.0f};
         
-        T inter_area = computeRectInterArea(P, pixel_rect_vertices);
+        T inter_area = computeRectInterArea(pixel_rect_vertices, P);
         T px_weight = inter_area / P_area;
         atomicAdd(offset_bottom_diff + hh * width + ww, static_cast<T>(px_weight * top_diff_this_bin));
       }
