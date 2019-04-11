@@ -167,19 +167,19 @@ class RoiAlignCpu(object):
         return bottom_diff
 
 if __name__ == '__main__':
-    # pool_size = (2, 2)
-    pool_size = (1, 1) # Ph, Pw
+    pool_size = (2, 2)
+    # pool_size = (1, 1) # Ph, Pw
     spatial_scale = 1.0
     sampling_ratio = 0
 
     N = 1
     C = 1
-    W = 3
-    H = 3
+    W = 10
+    H = 10
 
     im_x = np.arange(N * C * H * W).reshape((N, C, H, W)).astype(np.float32)
     rois = np.array([
-        [0, 0.5, 0.5, W-0.5, H-0.5]  # batch_ind, start_x, start_y, end_x, end_y
+        [0, 2, 2, 4, 4]  # batch_ind, start_x, start_y, end_x, end_y
     ], dtype=np.float32)
 
     roi_align_cpu = RoiAlignCpu(pool_size, spatial_scale=spatial_scale, sampling_ratio=sampling_ratio)

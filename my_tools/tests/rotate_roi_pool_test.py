@@ -33,8 +33,8 @@ def get_rotated_roi_pooling_pts(rois, pool_dims, spatial_scale=1.0):
         dy = -pooled_height / 2.0
         Sx = w / pooled_width
         Sy = h / pooled_height
-        Alpha = -np.cos(angle)
-        Beta = np.sin(angle)
+        Alpha = np.cos(angle)
+        Beta = -np.sin(angle)
         Dx = cx
         Dy = cy
 

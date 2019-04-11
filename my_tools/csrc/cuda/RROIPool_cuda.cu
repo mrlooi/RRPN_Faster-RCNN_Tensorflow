@@ -19,7 +19,7 @@ __device__ inline T deg2rad(const T deg)
 }
 
 template <typename T>
-__device__ void compute_roi_pool_pts(const T* roi, T* out_pts, const T spatial_scale,
+__device__ void compute_roi_pool_pts(const T* roi, T* out_pts, const float spatial_scale,
     const int pooled_height, const int pooled_width, const int pooled_height_idx, const int pooled_width_idx)
 {
   int ph = pooled_height_idx;
@@ -41,8 +41,8 @@ __device__ void compute_roi_pool_pts(const T* roi, T* out_pts, const T spatial_s
   T dy = -pooled_height/2.0;
   T Sx = w / pooled_width;
   T Sy = h / pooled_height;
-  T Alpha = -cos(angle);
-  T Beta = sin(angle);
+  T Alpha = cos(angle);
+  T Beta = -sin(angle);
   T Dx = cx;
   T Dy = cy;
 
@@ -54,14 +54,17 @@ __device__ void compute_roi_pool_pts(const T* roi, T* out_pts, const T spatial_s
   M[1][1] = Alpha*Sy;
   M[1][2] = -Beta*Sx*dx+Alpha*Sy*dy+Dy;
 
-  out_pts[0] = M[0][0]*pw+M[0][1]*ph+M[0][2];
-  out_pts[1] = M[1][0]*pw+M[1][1]*ph+M[1][2];
-  out_pts[2] = M[0][0]*pw+M[0][1]*(ph+1)+M[0][2];
-  out_pts[3] = M[1][0]*pw+M[1][1]*(ph+1)+M[1][2];
+  // ORDER IN CLOCKWISE OR ANTI-CLOCKWISE
+  // (0,1),(0,0),(1,0),(1,1)
+  out_pts[0] = M[0][0]*pw+M[0][1]*(ph+1)+M[0][2];
+  out_pts[1] = M[1][0]*pw+M[1][1]*(ph+1)+M[1][2];
+  out_pts[2] = M[0][0]*pw+M[0][1]*ph+M[0][2];
+  out_pts[3] = M[1][0]*pw+M[1][1]*ph+M[1][2];
   out_pts[4] = M[0][0]*(pw+1)+M[0][1]*ph+M[0][2];
   out_pts[5] = M[1][0]*(pw+1)+M[1][1]*ph+M[1][2];
   out_pts[6] = M[0][0]*(pw+1)+M[0][1]*(ph+1)+M[0][2];
   out_pts[7] = M[1][0]*(pw+1)+M[1][1]*(ph+1)+M[1][2];
+
 
 }
 
@@ -69,7 +72,7 @@ __device__ void compute_roi_pool_pts(const T* roi, T* out_pts, const T spatial_s
 
 template <typename T>
 __global__ void RRoIPoolFForward(const int nthreads, const T* bottom_data,
-    const T spatial_scale, const int channels, const int height,
+    const float spatial_scale, const int channels, const int height,
     const int width, const int pooled_height, const int pooled_width,
     const T* bottom_rois, T* top_data, int* argmax_data) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
@@ -167,7 +170,7 @@ __global__ void RRoIPoolFForward(const int nthreads, const T* bottom_data,
 
 template <typename T>
 __global__ void RRoIPoolFBackward(const int nthreads, const T* top_diff,
-    const int* argmax_data, const int num_rois, const T spatial_scale,
+    const int* argmax_data, const int num_rois, const float spatial_scale,
     const int channels, const int height, const int width,
     const int pooled_height, const int pooled_width, T* bottom_diff,
     const T* bottom_rois) {
