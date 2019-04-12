@@ -115,7 +115,7 @@ def visualize_box_preds(img, box_preds, min_score=0.9, color=RED):
         # canvas = np.zeros(img.shape, dtype=np.uint8)
         canvas = draw_anchors(img, sorted_pred, color)
     else:
-        canvas = np.zeros_like(img)
+        canvas = img.copy()
 
     return canvas
 
@@ -179,11 +179,11 @@ if __name__ == "__main__":
     cfg.RPN_ONLY = RPN_ONLY
     model = DetectionNetwork(cfg)
 
-    # if os.path.exists(save_path):
-    #     model.load_state_dict(torch.load(save_path))
-    #     print("Loaded %s"%(save_path))
+    if os.path.exists(save_path):
+        model.load_state_dict(torch.load(save_path))
+        print("Loaded %s"%(save_path))
 
-    train(model, data_loader, train_batch_sz)
+    # train(model, data_loader, train_batch_sz)
     # torch.save(model.state_dict(), save_path)
 
     test(model, data_loader, batch_sz=test_batch_sz, use_cuda=True, min_score=0.95)

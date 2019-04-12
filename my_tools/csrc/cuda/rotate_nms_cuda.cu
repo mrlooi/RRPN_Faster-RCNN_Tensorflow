@@ -236,6 +236,9 @@ at::Tensor rotate_nms_cuda(
 
   at::Tensor keep = at::zeros({boxes_num}, r_boxes.options().dtype(at::kLong).device(at::kCPU));
 
+  if (boxes_num == 0)
+    return keep;
+
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
   int num_to_keep = 0;
@@ -262,6 +265,9 @@ at::Tensor rotate_iou_matrix_cuda(
   int M = r_boxes2.size(0);
 
   at::Tensor iou_matrix = at::zeros({N, M}, r_boxes1.options());
+
+  if (N == 0 || M == 0)
+    return iou_matrix;
 
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
   _iou_matrix_launcher(iou_matrix.data<float>(), r_boxes1.contiguous().data<float>(),
