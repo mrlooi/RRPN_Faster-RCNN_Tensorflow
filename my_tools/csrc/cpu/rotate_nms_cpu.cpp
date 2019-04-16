@@ -1,11 +1,12 @@
-#include "cpu/vision.h"
+#include "cpu/rotate_nms.h"
 
 #include "rotate_rect_ops.h"
 
 
 template <typename scalar_t>
 at::Tensor rotate_nms_cpu_kernel(const at::Tensor& dets,
-                          const float threshold) {
+                          const float threshold, const int max_output) 
+{
   AT_ASSERTM(!dets.type().is_cuda(), "dets must be a CPU tensor");
 
   if (dets.numel() == 0) {
@@ -32,9 +33,13 @@ at::Tensor rotate_nms_cpu_kernel(const at::Tensor& dets,
 
   scalar_t rect_1[5];
   scalar_t rect_2[5];
+  int num_to_keep = 0;
   for (int64_t i = 0; i < ndets; i++) {
     if (suppressed[i] == 1)
       continue;
+    ++num_to_keep;
+    if (num_to_keep >= max_output)
+      break;
 
     rect_1[0] = xc[i];
     rect_1[1] = yc[i];
@@ -57,7 +62,7 @@ at::Tensor rotate_nms_cpu_kernel(const at::Tensor& dets,
         suppressed[j] = 1;
    }
   }
-  return at::nonzero(suppressed_t == 0).squeeze(1);
+  return at::nonzero(suppressed_t == 0).squeeze(1).narrow(/*dim=*/0, /*start=*/0, /*length=*/num_to_keep);
 }
 
 template <typename scalar_t>
@@ -127,11 +132,11 @@ void rotate_iou_cpu_kernel(const at::Tensor& r_boxes1,
 }
 
 at::Tensor rotate_nms_cpu(const at::Tensor& r_boxes,
-                   const float nms_threshold)
+                   const float nms_threshold, const int max_output)
 {
   at::Tensor result;
   AT_DISPATCH_FLOATING_TYPES(r_boxes.type(), "rotate_nms", [&] {
-    result = rotate_nms_cpu_kernel<scalar_t>(r_boxes, nms_threshold);
+    result = rotate_nms_cpu_kernel<scalar_t>(r_boxes, nms_threshold, max_output);
   });
   return result;
 }

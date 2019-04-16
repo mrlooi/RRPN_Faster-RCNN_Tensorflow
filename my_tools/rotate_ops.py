@@ -68,8 +68,8 @@ class _RotateNMSFunction(Function):
         #         keep_inds = nms_rotate_cpu(r_boxes, nms_threshold, post_nms_top_n)
         #     keep_inds = torch.LongTensor(keep_inds)
         #     # raise NotImplementedError("Rotate NMS Forward CPU layer not implemented!")
-        keep_inds = _C.rotate_nms(r_boxes, nms_threshold)
-        keep_inds = keep_inds[:post_nms_top_n]
+        keep_inds = _C.rotate_nms(r_boxes, nms_threshold, post_nms_top_n)
+        # keep_inds = keep_inds[:post_nms_top_n]
 
         return keep_inds
 

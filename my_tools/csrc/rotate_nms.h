@@ -3,7 +3,7 @@
 #include <vector>
 #include <torch/extension.h>
 
-#include "cpu/vision.h"
+#include "cpu/rotate_nms.h"
 
 #ifdef WITH_CUDA
 #include "cuda/vision.h"
@@ -11,18 +11,18 @@
 
 // Interface for Python
 at::Tensor rotate_nms(
-    const at::Tensor& r_boxes, const float nms_threshold
+    const at::Tensor& r_boxes, const float nms_threshold, const int max_output
 )
 {
   if (r_boxes.type().is_cuda())
   {
 #ifdef WITH_CUDA
-    return rotate_nms_cuda(r_boxes, nms_threshold);
+    return rotate_nms_cuda(r_boxes, nms_threshold, max_output);
 #else
     AT_ERROR("Not compiled with GPU support");
 #endif
   } else {
-    return rotate_nms_cpu(r_boxes, nms_threshold);
+    return rotate_nms_cpu(r_boxes, nms_threshold, max_output);
   }
   // AT_ERROR("Not implemented on the CPU");
 }

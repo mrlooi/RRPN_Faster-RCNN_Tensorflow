@@ -228,7 +228,7 @@ void _rotate_nms_launcher(long* keep_out, int* num_out, const float* boxes, int 
 
 
 at::Tensor rotate_nms_cuda(
-    const at::Tensor& r_boxes, const float nms_threshold
+    const at::Tensor& r_boxes, const float nms_threshold, const int max_output
 )
 {
   int boxes_num = r_boxes.size(0);
@@ -249,6 +249,8 @@ at::Tensor rotate_nms_cuda(
 //    batch_size, channels, output.data<float>(), stream
 //  );
   THCudaCheck(cudaGetLastError());
+
+  num_to_keep = std::min(num_to_keep, max_output);
 
   // TODO improve this part
 //  printf("GPU: num_to_keep: %d\n", num_to_keep);
