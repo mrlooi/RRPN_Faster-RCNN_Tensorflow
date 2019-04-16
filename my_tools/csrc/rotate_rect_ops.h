@@ -116,15 +116,15 @@ __DEVICE__ int compute_rect_vertices_intersects(const T* rect_pts1, const T* rec
             T B = vec2[j*2];
             T C = -(A*rect_pts2[j*2] + B*rect_pts2[j*2+1]);
 
-            T s = A*x+ B*y+ C;
+            T s = A*x + B*y + C;
 
             if( s >= 0 )
             {
-                posSign++;
+                ++posSign;
             }
             else
             {
-                negSign++;
+                ++negSign;
             }
         }
 
@@ -132,7 +132,7 @@ __DEVICE__ int compute_rect_vertices_intersects(const T* rect_pts1, const T* rec
         {
             intersection[num_intersects*2] = rect_pts1[i*2];
             intersection[num_intersects*2+1] = rect_pts1[i*2+1];
-            num_intersects++;
+            ++num_intersects;
         }
     }
 

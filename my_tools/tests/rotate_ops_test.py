@@ -14,10 +14,10 @@ if __name__ == "__main__":
     # =============================NMS ROTATE TEST===================================== #
     from anchor_generator import draw_anchors, convert_rect_to_pts, get_bounding_box, \
         bb_intersection_over_union, draw_bounding_boxes
-    from rotate_ops import RotateNMS, rotate_iou, nms_rotate_cpu
+    from rotate_ops import RotateNMS, rotate_iou, nms_rotate_cpu, iou_rotate_cpu
 
-    def rotate_nms_torch(dets, iou_thresh, device='cpu'):
-        nms_rot = RotateNMS(iou_thresh)
+    def rotate_nms_torch(dets, iou_thresh, max_outputs=1000, device='cpu'):
+        nms_rot = RotateNMS(iou_thresh, post_nms_top_n=max_outputs)
 
         dets_tensor = torch.tensor(dets).to(device)
         keep = nms_rot(dets_tensor)
@@ -92,10 +92,12 @@ if __name__ == "__main__":
     device_id = 0
 
     device = 'cuda'
-    keep = rotate_nms_torch(boxes, iou_thresh, device=device)
-    keep2 = nms_rotate_cpu(boxes, iou_thresh, len(boxes))
-    print("CPU keep: ", keep2)
+    keep = rotate_nms_torch(boxes, iou_thresh, max_outputs=5, device=device)
+    keep2 = rotate_nms_torch(boxes, iou_thresh, max_outputs=5, device='cpu')
+    keep3 = nms_rotate_cpu(boxes, iou_thresh, len(boxes))
     print("GPU keep: ", keep)
+    print("CPU keep: ", keep2)
+    print("CPU 2 keep: ", keep3)
     # keep = keep2
 
     s_keep = standard_nms_cpu(bounding_boxes, iou_thresh)
@@ -154,10 +156,15 @@ if __name__ == "__main__":
     
     start = time.time()
     ious = iou_rotate_torch(boxes1, boxes2, use_gpu=False)
-    print(ious)
     print('time: {}s'.format(time.time() - start))
+    print(ious)
     
     start = time.time()
     ious = iou_rotate_torch(boxes1, boxes2, use_gpu=True)
-    print(ious)
     print('time: {}s'.format(time.time() - start))
+    print(ious)
+
+    start = time.time()
+    ious = iou_rotate_cpu(boxes1, boxes2)
+    print('time: {}s'.format(time.time() - start))
+    print(ious)

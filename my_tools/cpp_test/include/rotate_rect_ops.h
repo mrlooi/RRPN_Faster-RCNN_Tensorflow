@@ -1,1 +1,1 @@
-../../csrc/cuda/rotate_rect_ops.h
+../../csrc/rotate_rect_ops.h

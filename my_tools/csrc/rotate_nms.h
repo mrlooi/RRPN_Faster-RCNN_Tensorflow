@@ -3,25 +3,28 @@
 #include <vector>
 #include <torch/extension.h>
 
+#include "cpu/vision.h"
+
 #ifdef WITH_CUDA
 #include "cuda/vision.h"
 #endif
 
 // Interface for Python
 at::Tensor rotate_nms(
-    const at::Tensor& r_boxes, const float nms_threshold, const int max_output
+    const at::Tensor& r_boxes, const float nms_threshold
 )
 {
   if (r_boxes.type().is_cuda())
   {
 #ifdef WITH_CUDA
-    return rotate_nms_cuda(r_boxes, nms_threshold, max_output);
+    return rotate_nms_cuda(r_boxes, nms_threshold);
 #else
     AT_ERROR("Not compiled with GPU support");
 #endif
+  } else {
+    return rotate_nms_cpu(r_boxes, nms_threshold);
   }
-  AT_ERROR("Not implemented on the CPU");
-  // return hough_voting_forward_cpu(input1, input2);
+  // AT_ERROR("Not implemented on the CPU");
 }
 
 // Interface for Python
@@ -36,7 +39,8 @@ at::Tensor rotate_iou_matrix(
 #else
     AT_ERROR("Not compiled with GPU support");
 #endif
+  } else {
+    return rotate_iou_matrix_cpu(r_boxes1, r_boxes2);
   }
-  AT_ERROR("Not implemented on the CPU");
-  // return hough_voting_forward_cpu(input1, input2);
+  // AT_ERROR("Not implemented on the CPU");
 }

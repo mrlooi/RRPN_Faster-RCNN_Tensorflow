@@ -228,7 +228,7 @@ void _rotate_nms_launcher(long* keep_out, int* num_out, const float* boxes, int 
 
 
 at::Tensor rotate_nms_cuda(
-    const at::Tensor& r_boxes, const float nms_threshold, const int max_output
+    const at::Tensor& r_boxes, const float nms_threshold
 )
 {
   int boxes_num = r_boxes.size(0);

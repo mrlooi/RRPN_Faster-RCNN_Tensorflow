@@ -3,8 +3,11 @@ project (rect_intersects)
 
 add_definitions("-std=c++11")
 
+set(CMAKE_CXX_FLAGS "-w ${CMAKE_CXX_FLAGS} -fopenmp")
+
 find_package(CUDA QUIET REQUIRED)  # cuda
 set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++11)
+
 
 # own include dirs
 include_directories("include")

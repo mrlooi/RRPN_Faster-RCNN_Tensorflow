@@ -68,6 +68,21 @@ __device__ void compute_roi_pool_pts(const T* roi, T* out_pts, const float spati
 
 }
 
+template <typename T>
+__device__ inline void get_rotated_rect_bounding_box(const T* pts, int& leftMost, int& topMost,
+  int& rightMost, int& bottomMost, const int width, const int height)
+{
+//  const T* P = pts;
+//  leftMost = int(max(round(min(min(P[0],P[2]),min(P[4],P[6]))),0.0));
+//  rightMost= int(min(round(max(max(P[0],P[2]),max(P[4],P[6]))),width-1.0));
+//  topMost= int(max(round(min(min(P[1],P[3]),min(P[5],P[7]))),0.0));
+//  bottomMost= int(min(round(max(max(P[1],P[3]),max(P[5],P[7]))),height-1.0));
+
+  leftMost = int(max(min(min(pts[0], pts[2]), min(pts[4], pts[6])), 0.0));
+  topMost = int(max(min(min(pts[1], pts[3]), min(pts[5], pts[7])), 0.0));
+  rightMost = int(min(max(max(pts[0], pts[2]), max(pts[4], pts[6])) + 1, width - 1.0));
+  bottomMost = int(min(max(max(pts[1], pts[3]), max(pts[5], pts[7])) + 1, height - 1.0));
+}
 
 
 template <typename T>
@@ -88,29 +103,27 @@ __global__ void RRoIPoolFForward(const int nthreads, const T* bottom_data,
     T P[8];
     compute_roi_pool_pts(offset_bottom_rois, P, spatial_scale, pooled_height, pooled_width, ph, pw);
 
-    int leftMost = int(max(round(min(min(P[0],P[2]),min(P[4],P[6]))),0.0));
-    int rightMost= int(min(round(max(max(P[0],P[2]),max(P[4],P[6]))),width-1.0));
-    int topMost= int(max(round(min(min(P[1],P[3]),min(P[5],P[7]))),0.0));
-    int bottomMost= int(min(round(max(max(P[1],P[3]),max(P[5],P[7]))),height-1.0));
+    int leftMost, topMost, rightMost, bottomMost;
+    get_rotated_rect_bounding_box(P, leftMost, topMost, rightMost, bottomMost, width, height);
 
     T maxval = 0;
     int maxidx = -1;
     const T* offset_bottom_data = bottom_data + (roi_batch_ind * channels + c) * height * width;
 
     T AB[2];
-    AB[0] = P[2] - P[0];
-    AB[1] = P[3] - P[1];  
+    AB[0] = P[0] - P[2];
+    AB[1] = P[1] - P[3];  
     T ABAB = AB[0]*AB[0] +AB[1]*AB[1];
     T AC[2];
-    AC[0] = P[4] - P[0];
-    AC[1] = P[5] - P[1];
+    AC[0] = P[4] - P[2];
+    AC[1] = P[5] - P[3];
     T ACAC = AC[0]*AC[0] + AC[1]*AC[1];
 
     for (int hh = topMost; hh < bottomMost+1; ++hh) {
       for (int ww = leftMost; ww < rightMost+1; ++ww) {
         T AP[2];
-        AP[0] = ww - P[0];
-        AP[1] = hh - P[1];
+        AP[0] = ww - P[2];
+        AP[1] = hh - P[3];
         T ABAP = AB[0]*AP[0] + AB[1]*AP[1];
         T ACAP = AC[0]*AP[0] + AC[1]*AP[1];
         if ( ABAP >= 1e-3 && (ABAB - ABAP) > -1e-3 && ACAP >= 1e-3 && (ACAC - ACAP) > -1e-3 )

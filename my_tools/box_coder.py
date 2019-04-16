@@ -6,7 +6,6 @@ from __future__ import division
 
 import torch
 import numpy as np
-import math
 
 from utils import stack, clamp
 
@@ -18,7 +17,7 @@ class BoxCoder(object):
     the representation used for training the regressors.
     """
 
-    def __init__(self, weights=None, bbox_xform_clip=math.log(1000. / 16), lib=np):
+    def __init__(self, weights=None, bbox_xform_clip=np.log(1000. / 16), lib=np):
         """
         Arguments:
             weights (4-element tuple)

@@ -59,15 +59,17 @@ class _RotateNMSFunction(Function):
         N = r_boxes.size(0)
         assert len(r_boxes.shape) == 2 and r_boxes.size(1) == 5
 
-        # keep_inds = torch.zeros(N)
-        if r_boxes.is_cuda:
-            # keep_inds = keep_inds.type(torch.cuda.IntTensor)
-            keep_inds = _C.rotate_nms(r_boxes, nms_threshold, post_nms_top_n)
-        else:
-            with torch.no_grad():
-                keep_inds = nms_rotate_cpu(r_boxes, nms_threshold, post_nms_top_n)
-            keep_inds = torch.LongTensor(keep_inds)
-            # raise NotImplementedError("Rotate NMS Forward CPU layer not implemented!")
+        # # keep_inds = torch.zeros(N)
+        # if r_boxes.is_cuda:
+        #     # keep_inds = keep_inds.type(torch.cuda.IntTensor)
+        #     keep_inds = _C.rotate_nms(r_boxes, nms_threshold, post_nms_top_n)
+        # else:
+        #     with torch.no_grad():
+        #         keep_inds = nms_rotate_cpu(r_boxes, nms_threshold, post_nms_top_n)
+        #     keep_inds = torch.LongTensor(keep_inds)
+        #     # raise NotImplementedError("Rotate NMS Forward CPU layer not implemented!")
+        keep_inds = _C.rotate_nms(r_boxes, nms_threshold)
+        keep_inds = keep_inds[:post_nms_top_n]
 
         return keep_inds
 
@@ -126,11 +128,12 @@ def rotate_iou(boxes1, boxes2):
     assert len(boxes1.shape) == 2 and len(boxes2.shape) == 2 \
            and boxes1.size(1) == 5 and boxes2.size(1) == 5
 
-    if boxes1.is_cuda:
-        iou_matrix = _C.rotate_iou_matrix(boxes1, boxes2)
-    else:
-        iou_matrix = iou_rotate_cpu(boxes1, boxes2)
-        iou_matrix = torch.FloatTensor(iou_matrix)
+    iou_matrix = _C.rotate_iou_matrix(boxes1, boxes2)
+    # if boxes1.is_cuda:
+    #     iou_matrix = _C.rotate_iou_matrix(boxes1, boxes2)
+    # else:
+    #     iou_matrix = iou_rotate_cpu(boxes1, boxes2)
+    #     iou_matrix = torch.FloatTensor(iou_matrix)
     return iou_matrix
 
 if __name__ == '__main__':

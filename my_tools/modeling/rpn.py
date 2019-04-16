@@ -161,7 +161,7 @@ class RPNPostProcessor(torch.nn.Module):
         self.nms_rotate = RotateNMS(nms_threshold=nms_thresh, post_nms_top_n=post_nms_top_n)
 
         if box_coder is None:
-            box_coder = BoxCoder(weights=(1.0, 1.0, 1.0, 1.0))
+            box_coder = BoxCoder(weights=(1.0, 1.0, 1.0, 1.0, 1.0))
         self.box_coder = box_coder
 
         if fpn_post_nms_top_n is None:
