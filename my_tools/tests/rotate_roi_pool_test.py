@@ -50,10 +50,10 @@ def get_rotated_roi_pooling_pts(rois, pool_dims, spatial_scale=1.0):
             for pw in range(pooled_width):
                     # compute the rotated rectangle of the pooling region (4 rectangle points, x y x y format)
                     P = pooling_pts[n,ph,pw]
-                    P[0] = M[0][0] * pw + M[0][1] * ph + M[0][2]
-                    P[1] = M[1][0] * pw + M[1][1] * ph + M[1][2]
-                    P[2] = M[0][0] * pw + M[0][1] * (ph + 1) + M[0][2]
-                    P[3] = M[1][0] * pw + M[1][1] * (ph + 1) + M[1][2]
+                    P[0] = M[0][0] * pw + M[0][1] * (ph + 1) + M[0][2]
+                    P[1] = M[1][0] * pw + M[1][1] * (ph + 1) + M[1][2]
+                    P[2] = M[0][0] * pw + M[0][1] * ph + M[0][2]
+                    P[3] = M[1][0] * pw + M[1][1] * ph + M[1][2]
                     P[4] = M[0][0] * (pw + 1) + M[0][1] * ph + M[0][2]
                     P[5] = M[1][0] * (pw + 1) + M[1][1] * ph + M[1][2]
                     P[6] = M[0][0] * (pw + 1) + M[0][1] * (ph + 1) + M[0][2]

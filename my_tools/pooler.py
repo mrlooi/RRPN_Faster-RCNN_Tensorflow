@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-# from layers.rotate_roi_pool import RROIPool as RROI
-from layers.rotate_roi_align import RROIAlign as RROI
+from layers.rotate_roi_pool import RROIPool as RROI
+# from layers.rotate_roi_align import RROIAlign as RROI
 from utils import cat
 
 class Pooler(nn.Module):
