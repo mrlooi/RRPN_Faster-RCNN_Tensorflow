@@ -3,6 +3,7 @@ import numpy as np
 # import torch
 
 from anchor_generator import generate_anchors, draw_anchors, convert_pts_to_rect, convert_rect_to_pts
+from rotate_roi_pool_test import get_rotated_roi_pooling_pts
 
 GREEN = (0,255,0)
 RED = (0,0,255)
@@ -31,57 +32,6 @@ def convert_region_to_pts(roi):
     pts[7] = 2*cy - pts[3]
     return pts
 
-
-def get_rotated_roi_pooling_pts(rois, pool_dims, spatial_scale=1.0):
-    pooled_height, pooled_width = pool_dims
-
-    N = len(rois)
-    pooling_pts = np.zeros((N,pooled_height,pooled_width,8), dtype=np.float32)
-
-    for n, bottom_rois in enumerate(rois):
-        roi_batch_ind = bottom_rois[0]
-
-        # resize ROIs to spatial scale
-        cx = bottom_rois[1] * spatial_scale
-        cy = bottom_rois[2] * spatial_scale
-        w = bottom_rois[3] * spatial_scale
-        h = bottom_rois[4] * spatial_scale
-
-        angle_deg = bottom_rois[5]
-        angle = np.deg2rad(angle_deg)
-
-        # compute values used to partition the ROI into the pooling dimensions
-        dx = -pooled_width / 2.0
-        dy = -pooled_height / 2.0
-        Sx = w / pooled_width
-        Sy = h / pooled_height
-        Alpha = np.cos(angle)
-        Beta = -np.sin(angle)
-        Dx = cx
-        Dy = cy
-
-        M = np.zeros((2,3), dtype=np.float32)
-        M[0][0] = Alpha * Sx
-        M[0][1] = Beta * Sy
-        M[0][2] = Alpha * Sx * dx + Beta * Sy * dy + Dx
-        M[1][0] = -Beta * Sx
-        M[1][1] = Alpha * Sy
-        M[1][2] = -Beta * Sx * dx + Alpha * Sy * dy + Dy
-
-        for ph in range(pooled_height):
-            for pw in range(pooled_width):
-                # compute the rotated rectangle of the pooling region (4 rectangle points, x y x y format)
-                P = pooling_pts[n,ph,pw]
-                P[0] = M[0][0] * pw + M[0][1] * (ph + 1) + M[0][2]
-                P[1] = M[1][0] * pw + M[1][1] * (ph + 1) + M[1][2]
-                P[2] = M[0][0] * pw + M[0][1] * ph + M[0][2]
-                P[3] = M[1][0] * pw + M[1][1] * ph + M[1][2]
-                P[4] = M[0][0] * (pw + 1) + M[0][1] * ph + M[0][2]
-                P[5] = M[1][0] * (pw + 1) + M[1][1] * ph + M[1][2]
-                P[6] = M[0][0] * (pw + 1) + M[0][1] * (ph + 1) + M[0][2]
-                P[7] = M[1][0] * (pw + 1) + M[1][1] * (ph + 1) + M[1][2]
-
-    return pooling_pts
 
 class RRoiAlignCpu(object):
     def __init__(self, pool_size, spatial_scale=1.0):
@@ -233,15 +183,22 @@ def convert_rect_to_pts2(roi):
 
     return pts.reshape((4,2))
 
+
+def sum_error(x1,x2):
+    return np.abs(x1 - x2).sum()
+
 if __name__ == '__main__':
     import cv2
+    import time
     import torch
     from layers.rotate_roi_align import RROIAlign
 
-    N = 1
+    N = 200
     C = 1
-    H = 8
-    W = 8
+    H = 60
+    W = 100
+    PH = 2
+    PW = 2
 
     # ROIs are in original image coordinates
     rois = np.array([
@@ -249,8 +206,14 @@ if __name__ == '__main__':
         # [W / 2, H / 2, W / 3, H / 5, -90],  # xc,yc,w,h,angle
         # [W / 2, H / 2, W / 4, H / 10, 0],  # xc,yc,w,h,angle
         # [2, 2, W / 5, H / 6, 30],  # xc,yc,w,h,angle
-        [0, 3, 3, 3, 3, 30],  # batch_ind,xc,yc,w,h,angle
-        [0, 1.5, 1.5, 2, 4, -30],  # batch_ind,xc,yc,w,h,angle
+        # [1, 30, 30, 30, 30, 30],  # batch_ind,xc,yc,w,h,angle
+        # [1, 15, 15, 20, 40, -30],  # batch_ind,xc,yc,w,h,angle
+        [199, 15, 15, 20, 40, -30],  # batch_ind,xc,yc,w,h,angle
+        [198, 15, 15, 20, 40, -30],  # batch_ind,xc,yc,w,h,angle
+        # [1, 15, 15, 20, 40, -30],  # batch_ind,xc,yc,w,h,angle
+        # [1, 15, 15, 20, 40, -30],  # batch_ind,xc,yc,w,h,angle
+        # [1, 15, 15, 20, 40, -30],  # batch_ind,xc,yc,w,h,angle
+        # [1, 15, 15, 20, 40, -30],  # batch_ind,xc,yc,w,h,angle
     ], dtype=np.float32)
     batch_inds = rois[:,0].copy()
     rois = rois[:,1:]
@@ -258,28 +221,35 @@ if __name__ == '__main__':
     rois = np.concatenate((batch_inds[:,None], rois), axis=1)
 
     # feature map size
-    spatial_scale = 0.8
-    pool_dims = (3,2) # ph, pw
+    spatial_scale = 0.25
+    pool_dims = (PH,PW) # ph, pw
 
-    image = np.arange(N*C*H*W, dtype=np.float32).reshape((N,C,H,W))
+    # image = np.arange(N*C*H*W, dtype=np.float32).reshape((N,C,H,W))
+    image = np.random.random(size=(N, C, H, W)).astype(np.float32)
 
     rroi_align_cpu = RRoiAlignCpu(pool_dims, spatial_scale)
     out = rroi_align_cpu.forward(image, rois)
-    print(out)
+    # print(out)
     image_grad = rroi_align_cpu.backward()
-    print(image_grad)
+    # print(image_grad)
 
     # vis_scaled_rois(rois[:, 1:], scale=400//H)
 
     pooler = RROIAlign(pool_dims, spatial_scale)
     tx = torch.tensor(image, requires_grad=True, device='cuda')
     trois = torch.tensor(rois, device='cuda')
-    out = pooler.forward(tx, trois)
-    print(out)
 
-    loss = out.sum()
+    t_start = time.time()
+    out2 = pooler.forward(tx, trois)
+    print("Forward Time taken: %.2f ms"%((time.time() - t_start)*1000))
+    print(sum_error(out2.detach().cpu().numpy(), out))
+
+    loss = out2.sum()
+    t_start = time.time()
     loss.backward()
-    print(tx.grad)
+    print("Backward Time taken: %.2f ms" % ((time.time() - t_start)*1000))
+    print(sum_error(tx.grad.cpu().numpy(), image_grad))
+    
 
     # rpp = get_rotated_roi_pooling_pts(rois, (1,1), spatial_scale=spatial_scale)
     # rpp2 = convert_region_to_pts(rois[0, 1:])

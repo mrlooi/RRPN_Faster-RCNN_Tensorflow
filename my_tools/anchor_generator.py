@@ -234,19 +234,20 @@ def bb_intersection_over_union(boxA, boxB):
 	# return the intersection over union value
 	return iou
 
-def convert_pts_to_rect(pts):
+def convert_pts_to_rect(pts, make_width_larger=True):
     box = pts.copy() # np.int0(np.round(pts))
     box = box.reshape([4, 2])
     rect1 = cv2.minAreaRect(box)
 
     x, y, w, h, theta = rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], rect1[2]
-    if h >= w:
-        h, w = w, h
-        theta = theta - 90
-    if theta < -90.0:
-        theta = theta + 180
-    elif theta > 90.0:
-        theta = theta - 180
+    if make_width_larger:
+        if h >= w:
+            h, w = w, h
+            theta = theta - 90
+        if theta < -90.0:
+            theta = theta + 180
+        elif theta > 90.0:
+            theta = theta - 180
     return (x, y, w, h, theta)
 
 def convert_rect_to_pts(anchor):
@@ -289,6 +290,8 @@ def draw_anchors(img, anchors, color_list=[], fill=False, line_sz=2):
         rect = anchor
         if len(anchor) != 8:
             rect = convert_rect_to_pts(anchor)
+        else:
+            rect = rect.reshape((4,2))
         rect = np.round(rect).astype(np.int32)
         if fill:
             cv2.fillConvexPoly(img_copy, rect, color)
