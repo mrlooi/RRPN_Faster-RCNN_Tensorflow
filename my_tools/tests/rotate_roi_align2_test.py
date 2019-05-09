@@ -13,58 +13,53 @@ YELLOW = (255,255,0)
 
 
 def get_pts_line_params(P):
-    line_params = np.zeros(8, np.float32)
-    for i in range(4):
+    line_params = np.zeros(4, np.float32)
+    for i in range(2):
         line_params[i * 2] = P[((i + 1) * 2) % 8] - P[i * 2];
         line_params[i * 2 + 1] = P[((i + 1) * 2) % 8 + 1] - P[i * 2 + 1];
     return line_params
 
 
 def bilinear_interpolate(bottom_data, height, width, y, x):
-
-    #// deal with cases that inverse elements are out of feature map boundary
     if (y < -1.0 or y > height or x < -1.0 or x > width):
-        #//empty
-        return 0;
+        val = w1 = w2 = w3 = w4 = 0.0
+        x_low = x_high = y_low = y_high = -1.0
+        return [val, w1, w2, w3, w4, x_low, x_high, y_low, y_high]
 
-    if (y <= 0): y = 0;
-    if (x <= 0): x = 0;
+    if y <= 0:
+        y = 0
+    if x <= 0:
+        x = 0
 
-    y_low = int(y);
-    x_low = int(x);
-    y_high = 0;
-    x_high = 0;
+    y_low = int(y)
+    x_low = int(x)
 
     if (y_low >= height - 1):
-        y_high = y_low = height - 1;
-        y = float(y_low);
+        y_high = y_low = height - 1
+        y = float(y_low)
     else:
-        y_high = y_low + 1;
+        y_high = y_low + 1
 
     if (x_low >= width - 1):
-        x_high = x_low = width - 1;
-        x = float(x_low);
+        x_high = x_low = width - 1
+        x = float(x_low)
     else:
-        x_high = x_low + 1;
+        x_high = x_low + 1
 
-    ly = y - y_low;
-    lx = x - x_low;
-    hy = 1. - ly;
-    hx = 1. - lx;
-    # // do bilinear interpolation
-    v1 = bottom_data[y_low * width + x_low];
-    v2 = bottom_data[y_low * width + x_high];
-    v3 = bottom_data[y_high * width + x_low];
-    v4 = bottom_data[y_high * width + x_high];
-    w1 = hy * hx
-    w2 = hy * lx
-    w3 = ly * hx
-    w4 = ly * lx;
+    ly = y - y_low
+    lx = x - x_low
+    hy = 1. - ly
+    hx = 1. - lx
+    # do bilinear interpolation
+    v1 = bottom_data[y_low * width + x_low]
+    v2 = bottom_data[y_low * width + x_high]
+    v3 = bottom_data[y_high * width + x_low]
+    v4 = bottom_data[y_high * width + x_high]
+    w1, w2, w3, w4 = hy * hx, hy * lx, ly * hx, ly * lx
 
-    val = (w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4);
+    val = w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4
 
-    return val;
-
+    return [val, w1, w2, w3, w4, x_low, x_high, y_low, y_high]
 
 class RRoiAlignCpu(object):
     def __init__(self, pool_size, spatial_scale=1.0, sampling_ratio=0.0):
@@ -77,7 +72,7 @@ class RRoiAlignCpu(object):
         self.top_data = None
 
 
-    def get_pooling_bi_interp(self, P, roi_h, roi_w, offset_bottom_data, height, width):
+    def forward_pooling_bi_interp(self, P, roi_h, roi_w, offset_bottom_data, height, width):
 
         sampling_ratio = self.sampling_ratio
 
@@ -94,12 +89,45 @@ class RRoiAlignCpu(object):
         output_val = 0.0
         for iy in range(roi_bin_grid_h):
             for ix in range(roi_bin_grid_w):
-                w = P[0] + (iy + 0.5) * line_params[0] * mh + (ix + 0.5) * line_params[2] * mw
-                h = P[1] + (iy + 0.5) * line_params[1] * mh + (ix + 0.5) * line_params[3] * mw
+                x = P[0] + (iy + 0.5) * line_params[0] * mh + (ix + 0.5) * line_params[2] * mw
+                y = P[1] + (iy + 0.5) * line_params[1] * mh + (ix + 0.5) * line_params[3] * mw
 
-                output_val += bilinear_interpolate(offset_bottom_data, height, width, h, w)
+                output_val += bilinear_interpolate(offset_bottom_data, height, width, x, y)[0]
 
         return output_val / count
+
+    def backward_pooling_bi_interp(self, bottom_diff, top_diff_this_bin, P, roi_h, roi_w,
+                                   offset_bottom_data, height, width, batch_ind, c):
+
+        sampling_ratio = self.sampling_ratio
+
+        line_params = get_pts_line_params(P)
+        # print(P, line_params)
+
+        roi_bin_grid_h = int(np.ceil(roi_h / self.pooled_height)) if sampling_ratio <= 0 else sampling_ratio
+        roi_bin_grid_w = int(np.ceil(roi_w / self.pooled_width)) if sampling_ratio <= 0 else sampling_ratio
+        mw = 1.0 / roi_bin_grid_w
+        mh = 1.0 / roi_bin_grid_h
+
+        count = roi_bin_grid_h * roi_bin_grid_w
+
+        for iy in range(roi_bin_grid_h):
+            for ix in range(roi_bin_grid_w):
+                x = P[0] + (iy + 0.5) * line_params[0] * mh + (ix + 0.5) * line_params[2] * mw
+                y = P[1] + (iy + 0.5) * line_params[1] * mh + (ix + 0.5) * line_params[3] * mw
+
+                values = bilinear_interpolate(offset_bottom_data, height, width, x, y)
+                _, w1, w2, w3, w4, x_low, x_high, y_low, y_high = values
+
+                if x_low >= 0 and x_high >= 0 and y_low >= 0 and y_high >= 0:
+                    g1 = top_diff_this_bin * w1 / count
+                    g2 = top_diff_this_bin * w2 / count
+                    g3 = top_diff_this_bin * w3 / count
+                    g4 = top_diff_this_bin * w4 / count
+                    bottom_diff[batch_ind, c, y_low, x_low] += g1
+                    bottom_diff[batch_ind, c, y_low, x_high] += g2
+                    bottom_diff[batch_ind, c, y_high, x_low] += g3
+                    bottom_diff[batch_ind, c, y_high, x_high] += g4
 
     def forward(self, image, rois):
         print("FORWARD")
@@ -131,7 +159,7 @@ class RRoiAlignCpu(object):
                         P = pooling_pts[n, ph, pw]
                         # P = self.get_dex_pts(roi_pts, ph, pw, pooled_height, pooled_width, spatial_scale)
 
-                        val = self.get_pooling_bi_interp(P, roi_h, roi_w, offset_bottom_data, H, W)
+                        val = self.forward_pooling_bi_interp(P, roi_h, roi_w, offset_bottom_data, H, W)
 
                         top_data[n, c, ph, pw] = val
 
@@ -140,6 +168,44 @@ class RRoiAlignCpu(object):
         self.bottom_rois = rois.copy()
 
         return top_data
+
+    def backward(self):
+        print("BACKWARD")
+        assert self.top_data is not None and self.bottom_data is not None and self.bottom_rois is not None
+
+        top_diff = np.ones_like(self.top_data) # assume gradient is just 1.0
+        bottom_diff = np.zeros_like(self.bottom_data)
+
+        pooled_height, pooled_width = self.pooled_height, self.pooled_width
+        spatial_scale = self.spatial_scale
+
+        B, C, H, W = self.bottom_data.shape
+        rois = self.bottom_rois
+        N = len(rois)
+
+        pooling_pts = get_rotated_roi_pooling_pts(rois, (pooled_height, pooled_width), spatial_scale=spatial_scale)
+
+        for n in range(N):
+            roi = rois[n]  # batch_ind, start_x, start_y, end_x, end_y
+
+            batch_ind = int(roi[0])
+            roi_w = roi[3] * spatial_scale
+            roi_h = roi[4] * spatial_scale
+
+            for c in range(C):
+                input_cn = self.bottom_data[batch_ind, c]
+                offset_bottom_data = input_cn.flatten()
+
+                for ph in range(pooled_height):
+                    for pw in range(pooled_width):
+                        top_diff_this_bin = top_diff[n, c, ph, pw]
+
+                        P = pooling_pts[n, ph, pw]
+                        # get the bounding box of the rotated rect
+
+                        self.backward_pooling_bi_interp(bottom_diff, top_diff_this_bin, P, roi_h, roi_w, offset_bottom_data, H, W, batch_ind, c)
+
+        return bottom_diff
 
 def vis_scaled_rois(rois_in, pool_dims, spatial_scale, scale=100):
     # rr = rois[-1,1:]
@@ -202,7 +268,7 @@ if __name__ == '__main__':
     import time
     # import torch
 
-    B = 1
+    B = 2
     C = 1
     H = 5
     W = 5
@@ -211,9 +277,8 @@ if __name__ == '__main__':
 
     # ROIs are in original image coordinates
     rois = np.array([
-        # [0, 2.5, 2.5, 2, 2, -90],  # xc,yc,w,h,angle
-        [0, 1.5, 1.5, 2, 1, -90],  # xc,yc,w,h,angle
-        # [W / 2, H / 2, W / 2, H / 5, -45],  # xc,yc,w,h,angle
+        [0, 1.5, 1.5, 2, 1, -45],  # batch_ind,xc,yc,w,h,angle
+        [1, 2.5, 2.5, 2, 2, -90],  # batch_ind, xc,yc,w,h,angle
     ], dtype=np.float32)
     # batch_inds = rois[:,0].copy()
     # rois = rois[:,1:]
@@ -230,7 +295,8 @@ if __name__ == '__main__':
     rroi_align_cpu = RRoiAlignCpu(pool_dims, spatial_scale)
     out = rroi_align_cpu.forward(image, rois)
     print(out)
-    # image_grad = rroi_align_cpu.backward()
-    # print(image_grad)
+    image_grad = rroi_align_cpu.backward()
+    np.set_printoptions(formatter={'float_kind': lambda x: "%.2f" % x})
+    print(image_grad)
 
     vis_scaled_rois(rois, pool_dims, spatial_scale, scale=400//H)
