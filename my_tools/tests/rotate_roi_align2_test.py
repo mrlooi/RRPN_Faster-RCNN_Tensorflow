@@ -92,7 +92,7 @@ class RRoiAlignCpu(object):
                 x = P[0] + (iy + 0.5) * line_params[0] * mh + (ix + 0.5) * line_params[2] * mw
                 y = P[1] + (iy + 0.5) * line_params[1] * mh + (ix + 0.5) * line_params[3] * mw
 
-                output_val += bilinear_interpolate(offset_bottom_data, height, width, x, y)[0]
+                output_val += bilinear_interpolate(offset_bottom_data, height, width, y, x)[0]
 
         return output_val / count
 
@@ -116,7 +116,7 @@ class RRoiAlignCpu(object):
                 x = P[0] + (iy + 0.5) * line_params[0] * mh + (ix + 0.5) * line_params[2] * mw
                 y = P[1] + (iy + 0.5) * line_params[1] * mh + (ix + 0.5) * line_params[3] * mw
 
-                values = bilinear_interpolate(offset_bottom_data, height, width, x, y)
+                values = bilinear_interpolate(offset_bottom_data, height, width, y, x)
                 _, w1, w2, w3, w4, x_low, x_high, y_low, y_high = values
 
                 if x_low >= 0 and x_high >= 0 and y_low >= 0 and y_high >= 0:
@@ -277,8 +277,8 @@ if __name__ == '__main__':
 
     # ROIs are in original image coordinates
     rois = np.array([
-        [0, 1.5, 1.5, 2, 1, -45],  # batch_ind,xc,yc,w,h,angle
-        [1, 2.5, 2.5, 2, 2, -90],  # batch_ind, xc,yc,w,h,angle
+        # [0, 1.5, 1.5, 2, 1, -45],  # batch_ind,xc,yc,w,h,angle
+        [0, 2.5, 2.5, 3, 2, -0],  # batch_ind, xc,yc,w,h,angle
     ], dtype=np.float32)
     # batch_inds = rois[:,0].copy()
     # rois = rois[:,1:]
